@@ -52,23 +52,39 @@ if __name__ == "__main__":
         bids = [[0 for x in range(len(exchanges))] for y in range(len(symbols))]
         asks = [[0 for x in range(len(exchanges))] for y in range(len(symbols))]
 
+        # !!! Fetch data
         tic = time.time()
         a1 = asyncio.get_event_loop().run_until_complete(multi_orderbooks(exchanges))
         print("async call spend: {:.2f}".format(time.time() - tic))
+        # !!! \Fetch data
 
+        # !!! Take Bids/Asks
         for Sym in range(len(symbols)):
             for index, exchange in enumerate(a1):
                 bids[Sym][index] = exchange[symbols[Sym]]["bids"][0][0]
                 asks[Sym][index] = exchange[symbols[Sym]]["asks"][0][0]
+        # !!! \Take Bids/Asks
 
+        print("bids: ", bids)
+        print("asks: ", asks)
+
+        # !!! find/print opportunities
         for Sym in range(len(symbols)):
             # Find exchanges for operations
-            min_ask_index = asks.index(min(asks))
-            max_bid_index = bids.index(max(bids))
+            min_ask_index = asks[Sym][::].index(min(asks[Sym][::]))
+            max_bid_index = bids[Sym][::].index(max(bids[Sym][::]))
+
             print(f"Symbol: {symbols[Sym]} :")
             print(f"Buy/Sell = {exchanges[min_ask_index]} / {exchanges[max_bid_index]}")
-            print("Highest Spread: {:.2f}".format(max(bids[Sym]) - min(asks[Sym])))
-            print("% Spread: {:.2%}".format(((max(bids[Sym]) / min(asks[Sym])) - 1)))
+            print(
+                "Highest Spread: {:.2f}".format(max(bids[Sym][::]) - min(asks[Sym][::]))
+            )
+            print(
+                "% Spread: {:.2%}".format(
+                    ((max(bids[Sym][::]) / min(asks[Sym][::])) - 1)
+                )
+            )
             print(" ")
+        # !!! \find/print opportunities
 
         print("----------------------------------------------------------------")
