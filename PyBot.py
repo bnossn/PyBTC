@@ -11,9 +11,18 @@ import ccxt.async_support as ccxta  # noqa: E402
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(root + "/python")
 
-# symbol = "ETH/USD"
+# Pairs to trade
 symbols = ["BTC/USD", "ETH/USD"]
+# Exchanges to trade
 exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
+max_pair_spread = [[], []]
+min_pair_spread = [[], []]
+current_pair_trailing = [[], []]
+# Trailing is the percentage from the max to trade
+# TRAILING_STOP = 0.8
+# MIN_MARGIN = 1
+TRAILING_STOP = 0.8
+MIN_MARGIN = 1 / 100
 
 
 async def async_client(exchange):
@@ -35,6 +44,7 @@ async def async_client(exchange):
         return tickers
     except ccxt.BaseError as e:
         print(type(e).__name__, str(e), str(e.args))
+        print("Caught Error within async_client")
         raise e
 
 
@@ -54,8 +64,20 @@ def list_unique_pairs(source):
 
 if __name__ == "__main__":
 
+    # All possible trading Pairs:
     exchange_pairs = list_unique_pairs(exchanges)
     print("%d pairings" % len(exchange_pairs))
+
+    # Lists of pair values need an initial zero value for the code to work
+    max_pair_spread = [
+        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
+    ]
+    min_pair_spread = [
+        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
+    ]
+    current_pair_trailing = [
+        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
+    ]
 
     while True:
 
@@ -85,24 +107,69 @@ if __name__ == "__main__":
             print(f"Symbol: {symbols[Sym]} :")
 
             for pair in exchange_pairs:
-                
+
                 # FIX ME - as Vezes ele faz trade com a mesma exchange porque vale mais a pena do que seu par
-                temp_ask = min(asks[Sym][exchanges.index(pair[0])], asks[Sym][exchanges.index(pair[1])])
-                temp_bid = max(bids[Sym][exchanges.index(pair[0])], bids[Sym][exchanges.index(pair[1])])
+                temp_ask = min(
+                    asks[Sym][exchanges.index(pair[0])],
+                    asks[Sym][exchanges.index(pair[1])],
+                )
+                temp_bid = max(
+                    bids[Sym][exchanges.index(pair[0])],
+                    bids[Sym][exchanges.index(pair[1])],
+                )
+                current_spread = (temp_bid / temp_ask) - 1
                 min_ask_index = asks[Sym][::].index(temp_ask)
                 max_bid_index = bids[Sym][::].index(temp_bid)
-                temp_ex_buy = exchanges[min_ask_index]
-                temp_ex_sell = exchanges[max_bid_index]
+                temp_exc_buy = exchanges[min_ask_index][:3]
+                temp_exc_sell = exchanges[max_bid_index][:3]
 
-                print(
-                    "Pairs (buy/sell): {}/{} (% Spread {:.2%})".format(
-                        temp_ex_buy,
-                        temp_ex_sell,
-                        ((temp_bid / temp_ask) - 1),
-                    )
+                # Calculate spread max, min e traling
+                if (
+                    current_spread > max_pair_spread[Sym][exchange_pairs.index(pair)]
+                ) or (max_pair_spread[Sym][exchange_pairs.index(pair)] == 0):
+                    max_pair_spread[Sym][exchange_pairs.index(pair)] = current_spread
+
+                if (
+                    current_spread < min_pair_spread[Sym][exchange_pairs.index(pair)]
+                ) or (min_pair_spread[Sym][exchange_pairs.index(pair)] == 0):
+                    min_pair_spread[Sym][exchange_pairs.index(pair)] = current_spread
+
+                current_pair_trailing[Sym][exchange_pairs.index(pair)] = (
+                    max_pair_spread[Sym][exchange_pairs.index(pair)] * TRAILING_STOP
                 )
 
-            print("!!!! Operate on \/ !!!!")
+                # Verificar condicao para entrar no trade
+                if (
+                    current_pair_trailing[Sym][exchange_pairs.index(pair)] > MIN_MARGIN
+                ) and (
+                    current_spread
+                    <= current_pair_trailing[Sym][exchange_pairs.index(pair)]
+                ):
+                    # buy(temp_exc_buy)
+                    # sell(temp_exc_sell)
+                    print(
+                        "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%}) - TRADE OPENED".format(
+                            temp_exc_buy,
+                            temp_exc_sell,
+                            max_pair_spread[Sym][exchange_pairs.index(pair)],
+                            min_pair_spread[Sym][exchange_pairs.index(pair)],
+                            current_spread,
+                            current_pair_trailing[Sym][exchange_pairs.index(pair)],
+                        )
+                    )
+                else:
+                    print(
+                        "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
+                            temp_exc_buy,
+                            temp_exc_sell,
+                            max_pair_spread[Sym][exchange_pairs.index(pair)],
+                            min_pair_spread[Sym][exchange_pairs.index(pair)],
+                            current_spread,
+                            current_pair_trailing[Sym][exchange_pairs.index(pair)],
+                        )
+                    )
+
+            print("!!!! Operate on \\/ !!!!")
 
             # Find exchanges for operations
             min_ask_index = asks[Sym][::].index(min(asks[Sym][::]))
