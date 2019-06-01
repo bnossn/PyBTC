@@ -1,0 +1,3 @@
+- Create a class that hold data about trades - used to leave a trades
+-Take the balance data from the csv file - ok
+-Correct excel timestamp - ok

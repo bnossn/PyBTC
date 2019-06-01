@@ -6,6 +6,7 @@ import sys
 import time
 
 import trade_mod
+from trade_mod import TradeData
 import file_management as file_manag
 import ccxt
 import ccxt.async_support as ccxta  # noqa: E402
@@ -65,7 +66,6 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
         )
         return
 
-    # FIX ME: FEES CANNOT BE STATIC. THERE WOULD NOT BE CONTROL TO DEDUCE THE FEE BALANCE WHEN CLOSING A TRADE?
     amount_bought = real_balance[all_exchanges.index(buying_exchange)] * TRADING_FACTOR
     if amount_bought < MIN_TRADE_AMOUNT:
         amount_bought = MIN_TRADE_AMOUNT
@@ -88,10 +88,10 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
     trade_mod.sell_token(selling_exchange, amount_sold, symbol)
 
     # Update Balances
-    real_balance[all_exchanges.index(buying_exchange)] -= (amount_bought + trading_fees)
+    real_balance[all_exchanges.index(buying_exchange)] -= amount_bought + trading_fees
     fees_balance[all_exchanges.index(buying_exchange)] += trading_fees
 
-    real_balance[all_exchanges.index(selling_exchange)] -= (amount_sold + trading_fees)
+    real_balance[all_exchanges.index(selling_exchange)] -= amount_sold + trading_fees
     fees_balance[all_exchanges.index(selling_exchange)] += trading_fees
     margin_balance[all_exchanges.index(selling_exchange)] += amount_sold
 
@@ -100,12 +100,36 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
         pair, symbol, buying_exchange, amount_bought, selling_exchange, amount_sold
     )
 
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)] = True
+    file_manag.updt_balance_files(
+        all_exchanges, real_balance, margin_balance, fees_balance
+    )
+
+    # Update the opened trade matrix
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(True)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(symbol)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_buying_exchange(buying_exchange)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_selling_exchange(selling_exchange)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_trade_amount(amount_bought)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_amount(trading_fees)
     pass
 
 
 def init():
-    file_manag.init_files()
+    global real_balance, margin_balance, fees_balance, opened_trades
+    file_manag.init_all_files(all_exchanges)
+
+    temp_dict = file_manag.fetch_stored_balances()
+    for i in range(len(all_exchanges)):
+        real_balance[i] = float(temp_dict["real_balance"][all_exchanges[i]])
+        margin_balance[i] = float(temp_dict["margin_balance"][all_exchanges[i]])
+        fees_balance[i] = float(temp_dict["fees_balance"][all_exchanges[i]])
+
+    # Holds all possible combinations trading pairs/symbols and stores a TradeData for each
+    opened_trades = [
+        [TradeData(exchange_pairs[x]) for x in range(len(exchange_pairs))]
+        for y in range(len(symbols))
+    ]
+    pass
 
 
 # Pairs to trade
@@ -114,12 +138,8 @@ symbols = ["BTC/USD", "ETH/USD"]
 all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
 # All possible trading Pairs:
 exchange_pairs = list_unique_pairs(all_exchanges)
-# Usado para garantir que o bot não entrará na mesma operação duas vezes.
-opened_trades = [
-    [False for x in range(len(list_unique_pairs(all_exchanges)))]
-    for y in range(len(symbols))
-]
-
+# Usado  para gravar as operacoes em aberto e para garantir que o bot não entrará na mesma operação duas vezes.
+opened_trades = []
 
 max_pair_spread = [[], []]
 min_pair_spread = [[], []]
@@ -132,7 +152,7 @@ MIN_MARGIN = 0.2 / 100
 
 # FIX ME: balances NOT USED
 # Trading Accounts - Considers all accounts starts with USD only.
-real_balance = [5000 for x in range(len(all_exchanges))]
+real_balance = [0 for x in range(len(all_exchanges))]
 margin_balance = [0 for x in range(len(all_exchanges))]
 # Amount reserved to pay for fees
 fees_balance = [0 for x in range(len(all_exchanges))]
@@ -141,6 +161,7 @@ FEES_FACTOR = 0.1
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
 # Max % of the available balance to be used in a single trade.
+# FIX ME: WITH THIS STRATEGY, THE TRADING AMOUNT WILL DECREASE FOR EACH TRADE. frist trade will take more money than second and etc.
 TRADING_FACTOR = 0.2
 
 
@@ -149,6 +170,10 @@ if __name__ == "__main__":
     init()
 
     print("%d pairings" % len(exchange_pairs))
+
+    print(f"real_balance = {real_balance}")
+    print(f"margin_balance = {margin_balance}")
+    print(f"fees_balance = {fees_balance}")
 
     # Lists of pair values need an initial zero value for the code to work
     max_pair_spread = [
@@ -226,13 +251,13 @@ if __name__ == "__main__":
                 if (
                     (
                         current_pair_trailing[nSym][exchange_pairs.index(pair)]
-                        > MIN_MARGIN
+                        >= MIN_MARGIN
                     )
                     and (
                         current_spread
                         <= current_pair_trailing[nSym][exchange_pairs.index(pair)]
                     )
-                    and (not opened_trades[nSym][exchange_pairs.index(pair)])
+                    and (not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open())
                 ):
                     # buy(temp_exc_buy)
                     # sell(temp_exc_sell)
@@ -251,7 +276,7 @@ if __name__ == "__main__":
 
                     execute_trading(pair, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
-                elif opened_trades[nSym][exchange_pairs.index(pair)]:
+                elif opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
 
                     print(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(

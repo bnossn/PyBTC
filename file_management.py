@@ -1,4 +1,5 @@
-import csv, os
+import csv, os, datetime
+
 
 trading_field_names = [
     "Timestamp",
@@ -9,26 +10,64 @@ trading_field_names = [
     "sell price",
 ]
 
+real_balance_initial_value = 5000
+margin_balance_initial_value = 0
+fees_balance_initial_value = 0
 
-def init_files():
 
-    file_check = "trading.csv"
+def init_all_files(all_exchanges):
+
+    file_name = "./csvFiles/trading.csv"
+    init_file(file_name, trading_field_names)
+
+    file_name = "./csvFiles/real_balance.csv"
+    field_name = ["Timestamp"] + all_exchanges
+    if not init_file(
+        file_name, field_name
+    ):  # if file was just created, assign initial values
+        assign_balance_initial_value(all_exchanges, "real_balance")
+
+    file_name = "./csvFiles/margin_balance.csv"
+    field_name = ["Timestamp"] + all_exchanges
+    if not init_file(
+        file_name, field_name
+    ):  # if file was just created, assign initial values
+        assign_balance_initial_value(all_exchanges, "margin_balance")
+
+    file_name = "./csvFiles/fees_balance.csv"
+    field_name = ["Timestamp"] + all_exchanges
+    if not init_file(
+        file_name, field_name
+    ):  # if file was just created, assign initial values
+        assign_balance_initial_value(all_exchanges, "fees_balance")
+
+
+def init_file(
+    file_name, field_name
+):  # returns false if filas wasn`t found and new file has been created
+
+    file_check = file_name
     if not os.path.isfile(file_check):
 
         with open(file_check, "w") as new_file:
 
             csv_writer = csv.DictWriter(
-                new_file, fieldnames=trading_field_names, lineterminator="\n"
+                new_file, fieldnames=field_name, lineterminator="\n"
             )
 
             csv_writer.writeheader()
+
+        return False
+
+    else:
+        return True
 
 
 def register_trade(
     pair, symbol, buying_exchange, amount_bought, selling_exchange, amount_sold
 ):
 
-    file_name = "trading.csv"
+    file_name = "./csvFiles/trading.csv"
     with open(file_name, "a") as file_scr:
 
         csv_writer = csv.DictWriter(
@@ -37,7 +76,7 @@ def register_trade(
 
         csv_writer.writerow(
             {
-                "Timestamp": "2",
+                "Timestamp": get_timestamp(),
                 "trading Symbol": symbol,
                 "buy on": buying_exchange,
                 "buy price": amount_bought,
@@ -45,6 +84,102 @@ def register_trade(
                 "sell price": amount_sold,
             }
         )
+
+
+def updt_balance_files(all_exchanges, real_balance, margin_balance, fees_balance):
+
+    updt_balance_file(all_exchanges, "real_balance", real_balance)
+
+    updt_balance_file(all_exchanges, "margin_balance", margin_balance)
+
+    updt_balance_file(all_exchanges, "fees_balance", fees_balance)
+
+
+def updt_balance_file(all_exchanges, balance_type, balance):
+
+    if balance_type == "real_balance":
+        file_name = "./csvFiles/real_balance.csv"
+    elif balance_type == "margin_balance":
+        file_name = "./csvFiles/margin_balance.csv"
+    elif balance_type == "fees_balance":
+        file_name = "./csvFiles/fees_balance.csv"
+    else:
+        return
+
+    with open(file_name, "a") as file_scr:
+
+        field_name = ["Timestamp"] + all_exchanges
+
+        csv_writer = csv.DictWriter(
+            file_scr, fieldnames=field_name, lineterminator="\n"
+        )
+
+        temp_dict = {}
+        temp_dict["Timestamp"] = get_timestamp()
+
+        for i in range(len(all_exchanges)):
+            temp_dict[all_exchanges[i]] = balance[i]
+
+        csv_writer.writerow(temp_dict)
+
+
+def fetch_stored_balances():
+    temp_dict = {}
+
+    temp_dict["real_balance"] = last_row("./csvFiles/real_balance.csv")
+    temp_dict["margin_balance"] = last_row("./csvFiles/margin_balance.csv")
+    temp_dict["fees_balance"] = last_row("./csvFiles/fees_balance.csv")
+
+    return temp_dict
+
+
+def assign_balance_initial_value(all_exchanges, balance_type):
+
+    if balance_type == "real_balance":
+        file_name = "./csvFiles/real_balance.csv"
+        balance_value = real_balance_initial_value
+    elif balance_type == "margin_balance":
+        file_name = "./csvFiles/margin_balance.csv"
+        balance_value = margin_balance_initial_value
+    elif balance_type == "fees_balance":
+        file_name = "./csvFiles/fees_balance.csv"
+        balance_value = fees_balance_initial_value
+    else:
+        return
+
+    with open(file_name, "a") as file_scr:
+
+        field_name = ["Timestamp"] + all_exchanges
+
+        csv_writer = csv.DictWriter(
+            file_scr, fieldnames=field_name, lineterminator="\n"
+        )
+
+        temp_dict = {}
+        temp_dict["Timestamp"] = get_timestamp()
+
+        for i in range(len(all_exchanges)):
+            temp_dict[all_exchanges[i]] = balance_value
+
+        csv_writer.writerow(temp_dict)
+
+
+def last_row(file_name):
+    data = ()
+    with open(file_name, "r") as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            if row:  # avoid blank lines
+                data = row
+    return data
+
+
+def get_timestamp():
+    return datetime.datetime.now()
+
+    # datetime.datetime.fromtimestamp(
+    #         datetime.datetime.now().timestamp()
+    #     ).isoformat()
 
 
 def files_examples():
