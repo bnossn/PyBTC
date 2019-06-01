@@ -235,7 +235,7 @@ if __name__ == "__main__":
 
             for pair in exchange_pairs:
 
-                # FIX ME - as Vezes ele faz trade com a mesma exchange porque vale mais a pena do que seu par
+                # FIX ME - as Vezes ele considera trade com a mesma exchange porque vale mais a pena do que seu par
                 temp_ask = min(
                     asks[nSym][all_exchanges.index(pair[0])],
                     asks[nSym][all_exchanges.index(pair[1])],
@@ -267,10 +267,7 @@ if __name__ == "__main__":
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (
-                        current_pair_trailing[nSym][exchange_pairs.index(pair)]
-                        >= MIN_MARGIN
-                    )
+                    (current_spread >= MIN_MARGIN)
                     and (
                         current_spread
                         <= current_pair_trailing[nSym][exchange_pairs.index(pair)]

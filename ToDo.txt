@@ -1,9 +1,9 @@
 - Create a class that hold data about trades - used to leave a trades ok
 -Take the balance data from the csv file - ok
 -Correct excel timestamp - ok
+-fix the decimals rounding when buying/selling - ok
+-the amount traded decreases as the balance decreases - Fix that. ok
 
 
 -Store opened trade so the script can go back to wherever it was when it was closed or crashed
 -Close trade whenever spread <= 0.0/100
--fix the decimals rounding when buying/selling
--the amount traded decreases as the balance decreases - Fix that.
