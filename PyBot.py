@@ -66,17 +66,15 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
         )
         return
 
-    amount_bought = round(
-        real_balance[all_exchanges.index(buying_exchange)] * TRADING_FACTOR, 2
-    )
-    if amount_bought < MIN_TRADE_AMOUNT:
-        amount_bought = MIN_TRADE_AMOUNT
+    if real_balance[all_exchanges.index(buying_exchange)] > TRADING_AMOUNT:
+        amount_bought = TRADING_AMOUNT
+    else:
+        amount_bought = real_balance[all_exchanges.index(buying_exchange)]
 
-    amount_sold = round(
-        real_balance[all_exchanges.index(selling_exchange)] * TRADING_FACTOR, 2
-    )
-    if amount_sold < MIN_TRADE_AMOUNT:
-        amount_sold = MIN_TRADE_AMOUNT
+    if real_balance[all_exchanges.index(selling_exchange)] > TRADING_AMOUNT:
+        amount_sold = TRADING_AMOUNT
+    else:
+        amount_sold = real_balance[all_exchanges.index(selling_exchange)]
 
     # Garantees that the amount sold/bought are the same
     if amount_bought > amount_sold:
@@ -181,10 +179,8 @@ fees_balance = [0 for x in range(len(all_exchanges))]
 FEES_FACTOR = 0.1
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
-
-#
+# Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
 TRADING_AMOUNT = 1000
-TRADING_FACTOR = 0.2
 
 
 if __name__ == "__main__":

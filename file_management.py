@@ -10,7 +10,7 @@ trading_field_names = [
     "sell price",
 ]
 
-real_balance_initial_value = 5000
+real_balance_initial_value = 4557
 margin_balance_initial_value = 0
 fees_balance_initial_value = 0
 
