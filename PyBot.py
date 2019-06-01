@@ -66,11 +66,15 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
         )
         return
 
-    amount_bought = real_balance[all_exchanges.index(buying_exchange)] * TRADING_FACTOR
+    amount_bought = round(
+        real_balance[all_exchanges.index(buying_exchange)] * TRADING_FACTOR, 2
+    )
     if amount_bought < MIN_TRADE_AMOUNT:
         amount_bought = MIN_TRADE_AMOUNT
 
-    amount_sold = real_balance[all_exchanges.index(selling_exchange)] * TRADING_FACTOR
+    amount_sold = round(
+        real_balance[all_exchanges.index(selling_exchange)] * TRADING_FACTOR, 2
+    )
     if amount_sold < MIN_TRADE_AMOUNT:
         amount_sold = MIN_TRADE_AMOUNT
 
@@ -83,6 +87,11 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
     trading_fees = amount_bought * FEES_FACTOR
     amount_bought -= trading_fees
     amount_sold -= trading_fees
+
+    # Round all amounts here before trading (Try to avoid float point hardware approximation)
+    amount_bought = round(amount_bought, 2)
+    amount_sold = round(amount_sold, 2)
+    trading_fees = round(trading_fees, 2)
 
     trade_mod.buy_token(buying_exchange, amount_bought, symbol)
     trade_mod.sell_token(selling_exchange, amount_sold, symbol)
@@ -105,12 +114,24 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
     )
 
     # Update the opened trade matrix
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(True)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(symbol)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_buying_exchange(buying_exchange)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_selling_exchange(selling_exchange)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_trade_amount(amount_bought)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_amount(trading_fees)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(
+        True
+    )
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(
+        symbol
+    )
+    opened_trades[symbols.index(symbol)][
+        exchange_pairs.index(pair)
+    ].set_buying_exchange(buying_exchange)
+    opened_trades[symbols.index(symbol)][
+        exchange_pairs.index(pair)
+    ].set_selling_exchange(selling_exchange)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_trade_amount(
+        amount_bought
+    )
+    opened_trades[symbols.index(symbol)][
+        exchange_pairs.index(pair)
+    ].set_fee_reserved_amount(trading_fees)
     pass
 
 
@@ -160,8 +181,9 @@ fees_balance = [0 for x in range(len(all_exchanges))]
 FEES_FACTOR = 0.1
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
-# Max % of the available balance to be used in a single trade.
-# FIX ME: WITH THIS STRATEGY, THE TRADING AMOUNT WILL DECREASE FOR EACH TRADE. frist trade will take more money than second and etc.
+
+#
+TRADING_AMOUNT = 1000
 TRADING_FACTOR = 0.2
 
 
@@ -257,7 +279,11 @@ if __name__ == "__main__":
                         current_spread
                         <= current_pair_trailing[nSym][exchange_pairs.index(pair)]
                     )
-                    and (not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open())
+                    and (
+                        not opened_trades[nSym][
+                            exchange_pairs.index(pair)
+                        ].get_is_trade_open()
+                    )
                 ):
                     # buy(temp_exc_buy)
                     # sell(temp_exc_sell)
@@ -276,7 +302,9 @@ if __name__ == "__main__":
 
                     execute_trading(pair, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
-                elif opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
+                elif opened_trades[nSym][
+                    exchange_pairs.index(pair)
+                ].get_is_trade_open():
 
                     print(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
