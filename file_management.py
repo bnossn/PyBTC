@@ -1,4 +1,4 @@
-import csv, os, datetime
+import csv, os, datetime, pickle
 
 
 trading_field_names = [
@@ -181,12 +181,26 @@ def get_timestamp():
     #         datetime.datetime.now().timestamp()
     #     ).isoformat()
 
+
 def file_exists(file_name):
 
     if os.path.isfile(file_name):
         return True
     else:
         return False
+
+def save_trades_data(trade_data):
+    with open('tradesData.bin', 'wb') as trades_data_file:
+        pickle.dump(trade_data, trades_data_file)
+
+def load_trades_data():
+
+    file_name = 'tradesData.bin'
+    with open(file_name, 'rb') as trades_data_file:
+        trades_data = pickle.load(trades_data_file)
+        return trades_data
+
+
 
 def files_examples():
 

@@ -160,6 +160,8 @@ def open_trade(pair, asks_list, bids_list, buying_exchange, selling_exchange, sy
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_bought_sym2)
    
+    # Update the opened_trades object file
+    file_manag.save_trades_data(opened_trades)
     pass
 
 
@@ -214,6 +216,8 @@ def close_trade(pair, asks_list, bids_list, symbol):
     #update the opened trades
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(False)
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)] = TradeData(pair)
+    # Update the opened_trades object file
+    file_manag.save_trades_data(opened_trades)
 
     # Zeroa max/min spread and trailing data
     max_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
@@ -241,11 +245,18 @@ def init():
         margin_balance[i] = float(temp_dict["margin_balance"][all_exchanges[i]])
         fees_balance[i] = float(temp_dict["fees_balance"][all_exchanges[i]])
 
-    # Holds all possible combinations trading pairs/symbols and stores a TradeData for each
-    opened_trades = [
-        [TradeData(exchange_pairs[x]) for x in range(len(exchange_pairs))]
-        for y in range(len(symbols))
-    ]
+    file_name = 'tradesData.bin'
+    if os.path.isfile(file_name):
+        opened_trades = file_manag.load_trades_data()
+    else:
+        # Holds all possible combinations trading pairs/symbols and stores a TradeData for each
+        opened_trades = [
+            [TradeData(exchange_pairs[x]) for x in range(len(exchange_pairs))]
+            for y in range(len(symbols))
+        ]
+        # Update the opened_trades object file
+        file_manag.save_trades_data(opened_trades)
+
     pass
 
 
@@ -264,10 +275,10 @@ current_pair_trailing = [[], []]
 # Trailing is the percentage from the max to trade
 # TRAILING_STOP = 0.8
 # MIN_MARGIN = 1/100
-#SPREAD_TO_CLOSE_TRADE = 0.05/100
+SPREAD_TO_CLOSE_TRADE = 0.05/100
 TRAILING_STOP = 0.99
 MIN_MARGIN = 0.2 / 100
-SPREAD_TO_CLOSE_TRADE = 1 / 100
+# SPREAD_TO_CLOSE_TRADE = 1 / 100
 
 # FIX ME: balances NOT USED
 # Trading Accounts - Considers all accounts starts with USD only.

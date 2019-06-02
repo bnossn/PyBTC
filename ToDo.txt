@@ -8,10 +8,11 @@
 -the amout of crypto you buy and sell HAVE to be the same for you to be market neutral - ok
 -Close trade whenever spread <= 0.0/100 ok
 -Add a way of closing all trades and halt the program (add closetrades file) - ok
+-zero max/min traling when trade is closed - ok
+-Store opened trade so the script can go back to wherever it was when it was closed or crashed - ok
 
 
--zero max/min traling when trade is close
--Store opened trade so the script can go back to wherever it was when it was closed or crashed
+-Deal with the timeout errors
 
 
 
