@@ -54,7 +54,7 @@ def list_unique_pairs(source):
     return result
 
 
-def execute_trading(pair, buying_exchange, selling_exchange, symbol):
+def open_trade(pair, asks_list, bids_list, buying_exchange, selling_exchange, symbol):
     global opened_trades
 
     # garantees that the exchange has at least the MIN_TRADE_AMOUNT avaiable for trading
@@ -66,72 +66,170 @@ def execute_trading(pair, buying_exchange, selling_exchange, symbol):
         )
         return
 
+
+    # Find out how much usd you are going to spend on the trade
+    # Amount bought sym1 means that it was bought x dollars worth of sym2
     if real_balance[all_exchanges.index(buying_exchange)] > TRADING_AMOUNT:
-        amount_bought = TRADING_AMOUNT
+        amount_bought_sym1 = TRADING_AMOUNT
     else:
-        amount_bought = real_balance[all_exchanges.index(buying_exchange)]
-
+        amount_bought_sym1 = real_balance[all_exchanges.index(buying_exchange)]
     if real_balance[all_exchanges.index(selling_exchange)] > TRADING_AMOUNT:
-        amount_sold = TRADING_AMOUNT
+        amount_sold_sym1 = TRADING_AMOUNT
     else:
-        amount_sold = real_balance[all_exchanges.index(selling_exchange)]
+        amount_sold_sym1 = real_balance[all_exchanges.index(selling_exchange)]
 
-    # Garantees that the amount sold/bought are the same
-    if amount_bought > amount_sold:
-        amount_bought = amount_sold
+
+    trading_buying_fees = amount_bought_sym1 * FEES_FACTOR # garantees you`re going to have money for fees (updated later)
+    amount_bought_sym1 -= trading_buying_fees
+
+    trading_selling_fees = amount_sold_sym1 * FEES_FACTOR # garantees you`re going to have money for fees updated later)
+    amount_sold_sym1 -= trading_selling_fees
+
+
+    ask_price = asks_list[symbols.index(symbol)][all_exchanges.index(buying_exchange)]
+    bid_price = bids_list[symbols.index(symbol)][all_exchanges.index(selling_exchange)]
+
+    amount_bought_sym2 = amount_bought_sym1 / ask_price
+    amount_sold_sym2 = amount_sold_sym1 / bid_price
+
+    # Garantees that the amount sold/bought are the same on sym2 - That keeps trade market neutral
+    # FIX ME: The best condition is to operate with the amount of sym2 bought (would garantee max profit). Take care with the margin condition
+    # amount_bought_sym2 always > amount_sold_sym2
+    if amount_bought_sym2 > amount_sold_sym2:
+        amount_bought_sym2 = amount_sold_sym2
     else:
-        amount_sold = amount_bought
+        amount_sold_sym2 = amount_bought_sym2
 
-    trading_fees = amount_bought * FEES_FACTOR
-    amount_bought -= trading_fees
-    amount_sold -= trading_fees
+    # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
+    amount_bought_sym1 = ask_price * amount_bought_sym2
+    amount_sold_sym1 = bid_price * amount_sold_sym2
+
+
+    # update the fee amount to avoid to much fee reserved on either exchange.
+    trading_buying_fees = amount_bought_sym1 * FEES_FACTOR
+    trading_selling_fees = amount_sold_sym1 * FEES_FACTOR
+
+
 
     # Round all amounts here before trading (Try to avoid float point hardware approximation)
-    amount_bought = round(amount_bought, 2)
-    amount_sold = round(amount_sold, 2)
-    trading_fees = round(trading_fees, 2)
+    amount_bought_sym1 = round(amount_bought_sym1, 2)
+    amount_sold_sym1 = round(amount_sold_sym1, 2)
+    trading_buying_fees = round(trading_buying_fees, 2)
+    trading_selling_fees = round(trading_selling_fees, 2)
 
-    trade_mod.buy_token(buying_exchange, amount_bought, symbol)
-    trade_mod.sell_token(selling_exchange, amount_sold, symbol)
+
+    trade_mod.buy_token(buying_exchange, amount_bought_sym1, symbol)
+    trade_mod.sell_token(selling_exchange, amount_sold_sym1, symbol) # Short sell
 
     # Update Balances
-    real_balance[all_exchanges.index(buying_exchange)] -= amount_bought + trading_fees
-    fees_balance[all_exchanges.index(buying_exchange)] += trading_fees
+    real_balance[all_exchanges.index(buying_exchange)] -= (amount_bought_sym1 + trading_buying_fees)
+    fees_balance[all_exchanges.index(buying_exchange)] += trading_buying_fees
 
-    real_balance[all_exchanges.index(selling_exchange)] -= amount_sold + trading_fees
-    fees_balance[all_exchanges.index(selling_exchange)] += trading_fees
-    margin_balance[all_exchanges.index(selling_exchange)] += amount_sold
+    # YOU DO NOT DECREASE THE REAL BALANCE WHEN YOU SELL CRYPTO (Margin trade). Margin balance really needed?
+    real_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
+    real_balance[all_exchanges.index(selling_exchange)] -= trading_selling_fees
+    fees_balance[all_exchanges.index(selling_exchange)] += trading_selling_fees
+    #margin_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
 
     # if trade sucessful:
     file_manag.register_trade(
-        pair, symbol, buying_exchange, amount_bought, selling_exchange, amount_sold
+        pair, symbol, buying_exchange, amount_bought_sym1, selling_exchange, amount_sold_sym1
     )
 
     file_manag.updt_balance_files(
         all_exchanges, real_balance, margin_balance, fees_balance
     )
 
+
     # Update the opened trade matrix
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(
-        True
-    )
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(
-        symbol
-    )
-    opened_trades[symbols.index(symbol)][
-        exchange_pairs.index(pair)
-    ].set_buying_exchange(buying_exchange)
-    opened_trades[symbols.index(symbol)][
-        exchange_pairs.index(pair)
-    ].set_selling_exchange(selling_exchange)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_trade_amount(
-        amount_bought
-    )
-    opened_trades[symbols.index(symbol)][
-        exchange_pairs.index(pair)
-    ].set_fee_reserved_amount(trading_fees)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(True)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(symbol)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_buying_exchange(buying_exchange)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_bought_symbol1(amount_bought_sym1)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_buying_exchange(trading_buying_fees)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_selling_exchange(selling_exchange)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_sold_symbol1(amount_sold_sym1)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_fees)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_bought_sym2)
+   
     pass
 
+
+def close_trade(pair, asks_list, bids_list, symbol):
+    global opened_trades, max_pair_spread, min_pair_spread, current_pair_trailing
+
+    print(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
+
+    # find where to buy, where to sell and how much of symbol2 is going to be sold/bought
+    buy_on_exchange = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_selling_exchange()
+    sell_on_exchange = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_buying_exchange()
+
+    amount_traded_symbol2 = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_amount_traded_symbol2()
+
+    trading_buying_fees = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_fee_reserved_selling_exchange()
+    trading_selling_fees = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_fee_reserved_buying_exchange()
+
+    # sell the buying one and buy the selling one according to the ask/bid list
+    ask_price = asks_list[symbols.index(symbol)][all_exchanges.index(buy_on_exchange)]
+    bid_price = bids_list[symbols.index(symbol)][all_exchanges.index(sell_on_exchange)]
+
+        # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
+    amount_bought_sym1 = ask_price * amount_traded_symbol2
+    amount_sold_sym1 = bid_price * amount_traded_symbol2
+
+    amount_bought_sym1 = round(amount_bought_sym1, 2)
+    amount_sold_sym1 = round(amount_sold_sym1, 2)
+
+    trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
+    trade_mod.sell_token(sell_on_exchange, amount_sold_sym1, symbol)
+
+    # Update the balances
+
+    real_balance[all_exchanges.index(buy_on_exchange)] -= amount_bought_sym1 # Close short selling operation (Margin trade)
+    fees_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_fees
+    real_balance[all_exchanges.index(buy_on_exchange)] += trading_buying_fees
+
+    real_balance[all_exchanges.index(sell_on_exchange)] += amount_sold_sym1
+    fees_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_fees
+    real_balance[all_exchanges.index(sell_on_exchange)] += trading_selling_fees
+
+    # register the trade
+        # if trade sucessful:
+    file_manag.register_trade(
+        pair, symbol, buy_on_exchange, amount_bought_sym1, sell_on_exchange, amount_sold_sym1
+    )
+
+    file_manag.updt_balance_files(
+        all_exchanges, real_balance, margin_balance, fees_balance
+    )
+
+    #update the opened trades
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(False)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)] = TradeData(pair)
+
+    # Zeroa max/min spread and trailing data
+    max_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
+    min_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
+    current_pair_trailing[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
+
+    pass
+
+
+def close_all_opened_trades(asks_list, bids_list):
+
+    for symbol in symbols:
+        for pair in exchange_pairs:
+            if opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_is_trade_open():
+                close_trade(pair, asks_list, bids_list, symbol)
+    
 
 def init():
     global real_balance, margin_balance, fees_balance, opened_trades
@@ -165,9 +263,11 @@ min_pair_spread = [[], []]
 current_pair_trailing = [[], []]
 # Trailing is the percentage from the max to trade
 # TRAILING_STOP = 0.8
-# MIN_MARGIN = 1
+# MIN_MARGIN = 1/100
+#SPREAD_TO_CLOSE_TRADE = 0.05/100
 TRAILING_STOP = 0.99
 MIN_MARGIN = 0.2 / 100
+SPREAD_TO_CLOSE_TRADE = 1 / 100
 
 # FIX ME: balances NOT USED
 # Trading Accounts - Considers all accounts starts with USD only.
@@ -229,6 +329,10 @@ if __name__ == "__main__":
         print("asks: ", asks)
         print(" ")
 
+        if file_manag.file_exists("closetrades.txt"):
+            close_all_opened_trades(asks, bids)
+            sys.exit()
+
         # !!! find/print opportunities
         for nSym in range(len(symbols)):
             print(f"Symbol: {symbols[nSym]} :")
@@ -278,8 +382,7 @@ if __name__ == "__main__":
                         ].get_is_trade_open()
                     )
                 ):
-                    # buy(temp_exc_buy)
-                    # sell(temp_exc_sell)
+
                     print(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
@@ -293,7 +396,7 @@ if __name__ == "__main__":
                     )
                     print("- Opportunity Found!")
 
-                    execute_trading(pair, temp_exc_buy, temp_exc_sell, symbols[nSym])
+                    open_trade(pair, asks, bids, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
                 elif opened_trades[nSym][
                     exchange_pairs.index(pair)
@@ -310,7 +413,12 @@ if __name__ == "__main__":
                         ),
                         end=" ",
                     )
-                    print("- OPENED TRADE!")
+
+                    if (current_spread < SPREAD_TO_CLOSE_TRADE):
+                        close_trade(pair, asks, bids, symbols[nSym])
+                        #print("- TRADE CLOSED!!!")
+                    else:
+                        print("- OPENED TRADE!")
 
                 else:
 

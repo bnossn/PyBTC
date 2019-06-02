@@ -3,7 +3,16 @@
 -Correct excel timestamp - ok
 -fix the decimals rounding when buying/selling - ok
 -the amount traded decreases as the balance decreases - Fix that. ok
+-Trade nao pode depender do trailing apenas mas do spread atual - ok
+-FIX THE WAY FEES ARE HANDLED - ok
+-the amout of crypto you buy and sell HAVE to be the same for you to be market neutral - ok
+-Close trade whenever spread <= 0.0/100 ok
+-Add a way of closing all trades and halt the program (add closetrades file) - ok
 
 
+-zero max/min traling when trade is close
 -Store opened trade so the script can go back to wherever it was when it was closed or crashed
--Close trade whenever spread <= 0.0/100
+
+
+
+-Script so considera o valor da melhor oferta sem considerar volume

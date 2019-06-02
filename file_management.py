@@ -10,7 +10,7 @@ trading_field_names = [
     "sell price",
 ]
 
-real_balance_initial_value = 4557
+real_balance_initial_value = 10000
 margin_balance_initial_value = 0
 fees_balance_initial_value = 0
 
@@ -181,6 +181,12 @@ def get_timestamp():
     #         datetime.datetime.now().timestamp()
     #     ).isoformat()
 
+def file_exists(file_name):
+
+    if os.path.isfile(file_name):
+        return True
+    else:
+        return False
 
 def files_examples():
 
