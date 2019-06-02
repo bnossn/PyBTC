@@ -20,6 +20,7 @@ class TradeData:
         self.fee_reserved_selling_exchange = 0 # given in symbol 1
 
         self.amount_traded_symbol2 = 0 #The same for both exchanges to keep market neutral
+        self.opportunity_spread = 0
         self.is_trade_open = False
 
     def set_exchange_pair(self, exchange_pair):
@@ -49,8 +50,11 @@ class TradeData:
     def set_amount_traded_symbol2(self, amount_traded_symbol2):
         self.amount_traded_symbol2 = amount_traded_symbol2 
 
+    def set_opportunity_spread(self, opportunity_spread):
+        self.opportunity_spread = opportunity_spread
+
     def set_is_trade_open(self, is_trade_open):
-        self.is_trade_open = is_trade_open
+        self.is_trade_open = is_trade_open        
 
     def get_is_trade_open(self):
         return self.is_trade_open
@@ -63,6 +67,9 @@ class TradeData:
 
     def get_amount_traded_symbol2(self):
         return self.amount_traded_symbol2
+
+    def get_opportunity_spread(self):
+        return self.opportunity_spread
 
     def get_fee_reserved_buying_exchange(self):
         return self.fee_reserved_buying_exchange

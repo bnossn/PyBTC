@@ -54,7 +54,7 @@ def list_unique_pairs(source):
     return result
 
 
-def open_trade(pair, asks_list, bids_list, buying_exchange, selling_exchange, symbol):
+def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exchange, symbol):
     global opened_trades
 
     # garantees that the exchange has at least the MIN_TRADE_AMOUNT avaiable for trading
@@ -159,6 +159,8 @@ def open_trade(pair, asks_list, bids_list, buying_exchange, selling_exchange, sy
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_fees)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_bought_sym2)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_opportunity_spread(spread)
    
     # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
@@ -276,7 +278,7 @@ current_pair_trailing = [[], []]
 # TRAILING_STOP = 0.8
 # MIN_MARGIN = 1/100
 SPREAD_TO_CLOSE_TRADE = 0.05/100
-TRAILING_STOP = 0.99
+TRAILING_STOP = 0.8
 MIN_MARGIN = 0.2 / 100
 # SPREAD_TO_CLOSE_TRADE = 1 / 100
 
@@ -303,6 +305,7 @@ if __name__ == "__main__":
     print(f"real_balance = {real_balance}")
     print(f"margin_balance = {margin_balance}")
     print(f"fees_balance = {fees_balance}")
+    print(" ")
 
     # Lists of pair values need an initial zero value for the code to work
     max_pair_spread = [
@@ -326,8 +329,11 @@ if __name__ == "__main__":
         a1 = asyncio.get_event_loop().run_until_complete(
             multi_orderbooks(all_exchanges)
         )
-        print("async call spend: {:.2f}".format(time.time() - tic))
+        print("async call spend: {:.2f}".format(time.time() - tic), end=" - ")
         # !!! \Fetch data
+
+        print("TimeStamp: " + str(file_manag.get_timestamp()))
+        print(" ")
 
         # !!! Take Bids/Asks
         for nSym in range(len(symbols)):
@@ -407,7 +413,7 @@ if __name__ == "__main__":
                     )
                     print("- Opportunity Found!")
 
-                    open_trade(pair, asks, bids, temp_exc_buy, temp_exc_sell, symbols[nSym])
+                    open_trade(pair, asks, bids, current_spread, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
                 elif opened_trades[nSym][
                     exchange_pairs.index(pair)
@@ -429,7 +435,8 @@ if __name__ == "__main__":
                         close_trade(pair, asks, bids, symbols[nSym])
                         #print("- TRADE CLOSED!!!")
                     else:
-                        print("- OPENED TRADE!")
+                        print("- OPENED TRADE! -", end=" ")
+                        print("Opportunity Spread = {:.2%}".format(opened_trades[nSym][exchange_pairs.index(pair)].get_opportunity_spread()))
 
                 else:
 
