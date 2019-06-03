@@ -278,9 +278,9 @@ current_pair_trailing = [[], []]
 # TRAILING_STOP = 0.8
 # MIN_MARGIN = 1/100
 SPREAD_TO_CLOSE_TRADE = 0.05/100
-TRAILING_STOP = 0.8
+TRAILING_STOP = 0.99
 MIN_MARGIN = 0.5 / 100
-# SPREAD_TO_CLOSE_TRADE = 1 / 100
+# SPREAD_TO_CLOSE_TRADE = 0.7 / 100
 
 # FIX ME: balances NOT USED
 # Trading Accounts - Considers all accounts starts with USD only.
@@ -294,6 +294,9 @@ FEES_FACTOR = 0.1
 MIN_TRADE_AMOUNT = 50
 # Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
 TRADING_AMOUNT = 5000
+
+FILE_STOP_TRADING = "stoptrading.txt"
+FILE_CLOSE_ALL_TRADES = "closetrades.txt"
 
 
 if __name__ == "__main__":
@@ -346,7 +349,7 @@ if __name__ == "__main__":
         print("asks: ", asks)
         print(" ")
 
-        if file_manag.file_exists("closetrades.txt"):
+        if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
             close_all_opened_trades(asks, bids)
             sys.exit()
 
@@ -412,8 +415,11 @@ if __name__ == "__main__":
                         end=" ",
                     )
                     print("- Opportunity Found!")
+                    
+                    # Added a way to stop entering new trades
+                    if not file_manag.file_exists(FILE_STOP_TRADING):
+                        open_trade(pair, asks, bids, current_spread, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
-                    open_trade(pair, asks, bids, current_spread, temp_exc_buy, temp_exc_sell, symbols[nSym])
 
                 elif opened_trades[nSym][
                     exchange_pairs.index(pair)
