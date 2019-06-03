@@ -279,7 +279,7 @@ current_pair_trailing = [[], []]
 # MIN_MARGIN = 1/100
 SPREAD_TO_CLOSE_TRADE = 0.05/100
 TRAILING_STOP = 0.8
-MIN_MARGIN = 0.2 / 100
+MIN_MARGIN = 0.5 / 100
 # SPREAD_TO_CLOSE_TRADE = 1 / 100
 
 # FIX ME: balances NOT USED
@@ -293,7 +293,7 @@ FEES_FACTOR = 0.1
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
 # Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
-TRADING_AMOUNT = 1000
+TRADING_AMOUNT = 5000
 
 
 if __name__ == "__main__":
