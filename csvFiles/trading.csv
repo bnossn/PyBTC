@@ -1,9 +1,0 @@
-Timestamp,trading Symbol,buy on,buy price,sell on,sell price
-2019-06-02 00:59:27.460000,BTC/USD,bitfinex,891.56,cex,900.0
-2019-06-02 00:59:27.488000,BTC/USD,kraken,892.64,cex,900.0
-2019-06-02 00:59:27.573000,BTC/USD,okcoinusd,893.35,cex,900.0
-2019-06-02 00:59:27.645000,ETH/USD,bitfinex,897.86,kraken,900.0
-2019-06-02 00:59:27.699000,ETH/USD,kraken,891.67,cex,900.0
-2019-06-02 00:59:27.746000,ETH/USD,okcoinusd,892.21,cex,900.0
-2019-06-02 00:59:53.919000,ETH/USD,bitfinex,890.16,cex,900.0
-2019-06-02 01:01:12.124000,BTC/USD,bitfinex,898.11,kraken,900.0

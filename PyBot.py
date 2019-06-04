@@ -5,6 +5,7 @@ import os
 import sys
 import time
 
+import BotLogging
 import trade_mod
 from trade_mod import TradeData
 import file_management as file_manag
@@ -13,7 +14,6 @@ import ccxt.async_support as ccxta  # noqa: E402
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(root + "/python")
-
 
 async def async_client(exchange):
     # client = getattr(ccxta, exchange)()
@@ -61,7 +61,7 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     if (real_balance[all_exchanges.index(buying_exchange)] < MIN_TRADE_AMOUNT) or (
         real_balance[all_exchanges.index(selling_exchange)] < MIN_TRADE_AMOUNT
     ):
-        print(
+        loggerln.info(
             f"Insuficient amount available in either exchange! {buying_exchange} or {selling_exchange}"
         )
         return
@@ -170,7 +170,7 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 def close_trade(pair, asks_list, bids_list, symbol):
     global opened_trades, max_pair_spread, min_pair_spread, current_pair_trailing
 
-    print(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
+    loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
 
     # find where to buy, where to sell and how much of symbol2 is going to be sold/bought
     buy_on_exchange = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_selling_exchange()
@@ -238,14 +238,27 @@ def close_all_opened_trades(asks_list, bids_list):
     
 
 def init():
-    global real_balance, margin_balance, fees_balance, opened_trades
+    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger
+    
+
+    if not file_manag.file_exists(LOG_FILE_NAME):
+        file_manag.create_file(LOG_FILE_NAME)
+    #logging.basicConfig(filename=log_file_name, level=logging.INFO, format='%(message)s')
+    loggerln = BotLogging.getLogger(r'\n', LOG_FILE_NAME,  terminator='\n')
+    logger = BotLogging.getLogger(r' ', LOG_FILE_NAME, terminator='')
+    logger.setLevel(BotLogging.logging.INFO)
+    loggerln.setLevel(BotLogging.logging.INFO)
+
+
     file_manag.init_all_files(all_exchanges)
+
 
     temp_dict = file_manag.fetch_stored_balances()
     for i in range(len(all_exchanges)):
         real_balance[i] = float(temp_dict["real_balance"][all_exchanges[i]])
         margin_balance[i] = float(temp_dict["margin_balance"][all_exchanges[i]])
         fees_balance[i] = float(temp_dict["fees_balance"][all_exchanges[i]])
+
 
     file_name = 'tradesData.bin'
     if os.path.isfile(file_name):
@@ -275,12 +288,10 @@ max_pair_spread = [[], []]
 min_pair_spread = [[], []]
 current_pair_trailing = [[], []]
 # Trailing is the percentage from the max to trade
-# TRAILING_STOP = 0.8
-# MIN_MARGIN = 1/100
-SPREAD_TO_CLOSE_TRADE = 0.05/100
-TRAILING_STOP = 0.99
-MIN_MARGIN = 0.5 / 100
-# SPREAD_TO_CLOSE_TRADE = 0.7 / 100
+MIN_MARGIN = 0.8 / 100
+TRAILING_STOP = 0.8
+SPREAD_TO_CLOSE_TRADE = 0.0/100
+
 
 # FIX ME: balances NOT USED
 # Trading Accounts - Considers all accounts starts with USD only.
@@ -298,17 +309,31 @@ TRADING_AMOUNT = 5000
 FILE_STOP_TRADING = "stoptrading.txt"
 FILE_CLOSE_ALL_TRADES = "closetrades.txt"
 
+# Log file and variables
+LOG_FILE_NAME = "./logFiles/tradings.log"
+loggerln = None
+logger = None
 
 if __name__ == "__main__":
 
-    init()
+    init()        
 
     print("%d pairings" % len(exchange_pairs))
+
+    loggerln.info("%d pairings" % len(exchange_pairs))
 
     print(f"real_balance = {real_balance}")
     print(f"margin_balance = {margin_balance}")
     print(f"fees_balance = {fees_balance}")
     print(" ")
+
+    # Counter used to know that the code is still running from the python terminal
+    ncounter = 0
+
+    loggerln.info(f"real_balance = {real_balance}")
+    loggerln.info(f"margin_balance = {margin_balance}")
+    loggerln.info(f"fees_balance = {fees_balance}")
+    loggerln.info(" ")
 
     # Lists of pair values need an initial zero value for the code to work
     max_pair_spread = [
@@ -323,6 +348,9 @@ if __name__ == "__main__":
 
     while True:
 
+        print(f"Code running, cycle: {ncounter}")
+        ncounter += 1
+
         # Holds on two dimensiona array [Exchange][Symbol]
         bids = [[0 for x in range(len(all_exchanges))] for y in range(len(symbols))]
         asks = [[0 for x in range(len(all_exchanges))] for y in range(len(symbols))]
@@ -332,11 +360,10 @@ if __name__ == "__main__":
         a1 = asyncio.get_event_loop().run_until_complete(
             multi_orderbooks(all_exchanges)
         )
-        print("async call spend: {:.2f}".format(time.time() - tic), end=" - ")
-        # !!! \Fetch data
 
-        print("TimeStamp: " + str(file_manag.get_timestamp()))
-        print(" ")
+        loggerln.info("async call spend: {:.2f}  -  TimeStamp: {}".format((time.time() - tic), str(file_manag.get_timestamp())))
+        # !!! \Fetch data
+        loggerln.info(" ")
 
         # !!! Take Bids/Asks
         for nSym in range(len(symbols)):
@@ -345,17 +372,17 @@ if __name__ == "__main__":
                 asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
         # !!! \Take Bids/Asks
 
-        print("bids: ", bids)
-        print("asks: ", asks)
-        print(" ")
+        loggerln.info(f"bids: {bids}")
+        loggerln.info(f"asks: {asks}")
+        loggerln.info(" ")
 
         if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
             close_all_opened_trades(asks, bids)
             sys.exit()
 
-        # !!! find/print opportunities
+        # !!! find/logging.info opportunities
         for nSym in range(len(symbols)):
-            print(f"Symbol: {symbols[nSym]} :")
+            loggerln.info(f"Symbol: {symbols[nSym]} :")
 
             for pair in exchange_pairs:
 
@@ -403,7 +430,7 @@ if __name__ == "__main__":
                     )
                 ):
 
-                    print(
+                    logger.info(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
@@ -412,20 +439,23 @@ if __name__ == "__main__":
                             current_spread,
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
-                        end=" ",
                     )
-                    print("- Opportunity Found!")
+                    logger.info(" - Opportunity Found!")
                     
                     # Added a way to stop entering new trades
                     if not file_manag.file_exists(FILE_STOP_TRADING):
                         open_trade(pair, asks, bids, current_spread, temp_exc_buy, temp_exc_sell, symbols[nSym])
+                    else:
+                        logger.info(" New Trades are Paused")
 
+                    loggerln.info("")
 
                 elif opened_trades[nSym][
                     exchange_pairs.index(pair)
                 ].get_is_trade_open():
 
-                    print(
+
+                    logger.info(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
@@ -434,19 +464,19 @@ if __name__ == "__main__":
                             current_spread,
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
-                        end=" ",
                     )
 
                     if (current_spread < SPREAD_TO_CLOSE_TRADE):
                         close_trade(pair, asks, bids, symbols[nSym])
-                        #print("- TRADE CLOSED!!!")
+                        #rlogger.info("- TRADE CLOSED!!!")
                     else:
-                        print("- OPENED TRADE! -", end=" ")
-                        print("Opportunity Spread = {:.2%}".format(opened_trades[nSym][exchange_pairs.index(pair)].get_opportunity_spread()))
+                        logger.info(" - OPENED TRADE! - ")
+                        loggerln.info("Opportunity Spread = {:.2%}".format(opened_trades[nSym][exchange_pairs.index(pair)].get_opportunity_spread()))
+
 
                 else:
 
-                    print(
+                    loggerln.info(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
@@ -457,26 +487,26 @@ if __name__ == "__main__":
                         )
                     )
 
-            print("!!!! Operate on \\/ !!!!")
+            loggerln.info("!!!! Operate on \\/ !!!!")
 
             # Find exchanges for operations
             min_ask_index = asks[nSym][::].index(min(asks[nSym][::]))
             max_bid_index = bids[nSym][::].index(max(bids[nSym][::]))
 
-            print(
+            loggerln.info(
                 f"Buy/Sell = {all_exchanges[min_ask_index]} / {all_exchanges[max_bid_index]}"
             )
-            print(
+            loggerln.info(
                 "Highest Spread: {:.2f}".format(
                     max(bids[nSym][::]) - min(asks[nSym][::])
                 )
             )
-            print(
+            loggerln.info(
                 "% Spread: {:.2%}".format(
                     ((max(bids[nSym][::]) / min(asks[nSym][::])) - 1)
                 )
             )
-            print(" ")
-        # !!! \find/print opportunities
+            loggerln.info(" ")
+        # !!! \find/logging.info opportunities
 
-        print("----------------------------------------------------------------")
+        loggerln.info("----------------------------------------------------------------")

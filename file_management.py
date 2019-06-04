@@ -189,9 +189,15 @@ def file_exists(file_name):
     else:
         return False
 
+def create_file(file_name):
+    with open(file_name, "w") as new_file:
+        new_file.close()
+
+
 def save_trades_data(trade_data):
     with open('tradesData.bin', 'wb') as trades_data_file:
         pickle.dump(trade_data, trades_data_file)
+
 
 def load_trades_data():
 
