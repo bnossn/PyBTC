@@ -418,6 +418,15 @@ if __name__ == "__main__":
 
             for pair in exchange_pairs:
 
+
+                if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
+                    temp_ask = asks[nSym][all_exchanges.index(pair[0])]
+                    temp_bid = bids[nSym][all_exchanges.index(pair[1])]
+                else:
+                    temp_ask = asks[nSym][all_exchanges.index(pair[1])]
+                    temp_bid = bids[nSym][all_exchanges.index(pair[0])]
+                
+
                 # FIX ME - as Vezes ele considera trade com a mesma exchange porque vale mais a pena do que seu par
                 temp_ask = min(
                     asks[nSym][all_exchanges.index(pair[0])],
