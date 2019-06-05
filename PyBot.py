@@ -425,7 +425,7 @@ if __name__ == "__main__":
                 else:
                     temp_ask = asks[nSym][all_exchanges.index(pair[1])]
                     temp_bid = bids[nSym][all_exchanges.index(pair[0])]
-                
+                    
                 
                 current_pair_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
                 min_ask_index = asks[nSym][::].index(temp_ask) # FIX ME: if two exchanges have the same ask value this would raise an Error
