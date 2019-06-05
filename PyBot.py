@@ -418,15 +418,14 @@ if __name__ == "__main__":
 
             for pair in exchange_pairs:
 
-                # FIX ME - as Vezes ele considera trade com a mesma exchange porque vale mais a pena do que seu par
-                temp_ask = min(
-                    asks[nSym][all_exchanges.index(pair[0])],
-                    asks[nSym][all_exchanges.index(pair[1])],
-                )
-                temp_bid = max(
-                    bids[nSym][all_exchanges.index(pair[0])],
-                    bids[nSym][all_exchanges.index(pair[1])],
-                )
+
+                if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
+                    temp_ask = asks[nSym][all_exchanges.index(pair[0])]
+                    temp_bid = bids[nSym][all_exchanges.index(pair[1])]
+                else:
+                    temp_ask = asks[nSym][all_exchanges.index(pair[1])]
+                    temp_bid = bids[nSym][all_exchanges.index(pair[0])]
+                
                 
                 current_pair_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
                 min_ask_index = asks[nSym][::].index(temp_ask) # FIX ME: if two exchanges have the same ask value this would raise an Error
