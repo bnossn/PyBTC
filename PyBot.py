@@ -96,13 +96,14 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     # FIX ME: The best condition is to operate with the amount of sym2 bought (would garantee max profit). Take care with the margin condition
     # amount_bought_sym2 always > amount_sold_sym2
     if amount_bought_sym2 > amount_sold_sym2:
-        amount_bought_sym2 = amount_sold_sym2
+        amount_traded_sym2 = amount_sold_sym2
     else:
-        amount_sold_sym2 = amount_bought_sym2
+        amount_traded_sym2 = amount_bought_sym2
+    
 
     # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
-    amount_bought_sym1 = ask_price * amount_bought_sym2
-    amount_sold_sym1 = bid_price * amount_sold_sym2
+    amount_bought_sym1 = ask_price * amount_traded_sym2
+    amount_sold_sym1 = bid_price * amount_traded_sym2
 
 
     # update the fee amount to avoid to much fee reserved on either exchange.
@@ -132,8 +133,20 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     #margin_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
 
     # if trade sucessful:
+        # Register the trade
     file_manag.register_trade(
-        pair, symbol, buying_exchange, amount_bought_sym1, selling_exchange, amount_sold_sym1
+        symbol,
+        "Opening",
+        spread,
+        amount_traded_sym2,
+        buying_exchange,
+        ask_price,
+        amount_bought_sym1,
+        trading_buying_fees,
+        selling_exchange,
+        bid_price,
+        amount_sold_sym1,
+        trading_selling_fees
     )
 
     file_manag.updt_balance_files(
@@ -141,7 +154,7 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     )
 
 
-    # Update the opened trade matrix
+        # Update the opened trade matrix
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(True)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(symbol)
@@ -158,16 +171,17 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_fees)
 
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_bought_sym2)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_traded_sym2)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_opportunity_spread(spread)
    
-    # Update the opened_trades object file
+        # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
+
     pass
 
 
-def close_trade(pair, asks_list, bids_list, symbol):
+def close_trade(pair, asks_list, bids_list, symbol, spread):
     global opened_trades, max_pair_spread, min_pair_spread, current_pair_trailing
 
     loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
@@ -208,7 +222,18 @@ def close_trade(pair, asks_list, bids_list, symbol):
     # register the trade
         # if trade sucessful:
     file_manag.register_trade(
-        pair, symbol, buy_on_exchange, amount_bought_sym1, sell_on_exchange, amount_sold_sym1
+        symbol,
+        "Closing",
+        spread,
+        amount_traded_symbol2,
+        buy_on_exchange,
+        ask_price,
+        amount_bought_sym1,
+        0,  # reserved_buying_fees
+        sell_on_exchange,
+        bid_price,
+        amount_sold_sym1,
+        0,  # reserved_selling_fees
     )
 
     file_manag.updt_balance_files(
@@ -221,7 +246,7 @@ def close_trade(pair, asks_list, bids_list, symbol):
     # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
 
-    # Zeroa max/min spread and trailing data
+    # Zero max/min spread and trailing data
     max_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
     min_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
     current_pair_trailing[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
@@ -229,13 +254,13 @@ def close_trade(pair, asks_list, bids_list, symbol):
     pass
 
 
-def close_all_opened_trades(asks_list, bids_list):
+def close_all_opened_trades(asks_list, bids_list, current_spreads_list):
 
     for symbol in symbols:
         for pair in exchange_pairs:
             if opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_is_trade_open():
-                close_trade(pair, asks_list, bids_list, symbol)
-    
+                close_trade(pair, asks_list, bids_list, symbol, current_spreads_list[symbols.index(symbol)][exchange_pairs.index(pair)])
+
 
 def init():
     global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger
@@ -287,10 +312,14 @@ opened_trades = []
 max_pair_spread = [[], []]
 min_pair_spread = [[], []]
 current_pair_trailing = [[], []]
+current_pair_spread = [[], []]
 # Trailing is the percentage from the max to trade
-MIN_MARGIN = 0.8 / 100
-TRAILING_STOP = 0.8
-SPREAD_TO_CLOSE_TRADE = 0.0/100
+# MIN_MARGIN = 0.8 / 100
+# TRAILING_STOP = 0.8
+# SPREAD_TO_CLOSE_TRADE = 0.0/100
+MIN_MARGIN = 0.2 / 100
+TRAILING_STOP = 0.99
+SPREAD_TO_CLOSE_TRADE = 1 /100
 
 
 # FIX ME: balances NOT USED
@@ -316,7 +345,7 @@ logger = None
 
 if __name__ == "__main__":
 
-    init()        
+    init()
 
     print("%d pairings" % len(exchange_pairs))
 
@@ -343,6 +372,9 @@ if __name__ == "__main__":
         [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
     ]
     current_pair_trailing = [
+        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
+    ]
+    current_pair_spread = [
         [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
     ]
 
@@ -377,7 +409,7 @@ if __name__ == "__main__":
         loggerln.info(" ")
 
         if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
-            close_all_opened_trades(asks, bids)
+            close_all_opened_trades(asks, bids, current_pair_spread)
             sys.exit()
 
         # !!! find/logging.info opportunities
@@ -395,22 +427,23 @@ if __name__ == "__main__":
                     bids[nSym][all_exchanges.index(pair[0])],
                     bids[nSym][all_exchanges.index(pair[1])],
                 )
-                current_spread = (temp_bid / temp_ask) - 1
-                min_ask_index = asks[nSym][::].index(temp_ask)
-                max_bid_index = bids[nSym][::].index(temp_bid)
+                
+                current_pair_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
+                min_ask_index = asks[nSym][::].index(temp_ask) # FIX ME: if two exchanges have the same ask value this would raise an Error
+                max_bid_index = bids[nSym][::].index(temp_bid) # FIX ME: if two exchanges have the same ask value this would raise an Error
                 temp_exc_buy = all_exchanges[min_ask_index]
                 temp_exc_sell = all_exchanges[max_bid_index]
 
                 # Calculates the all times spread max, min e traling
                 if (
-                    current_spread > max_pair_spread[nSym][exchange_pairs.index(pair)]
+                    current_pair_spread[nSym][exchange_pairs.index(pair)] > max_pair_spread[nSym][exchange_pairs.index(pair)]
                 ) or (max_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    max_pair_spread[nSym][exchange_pairs.index(pair)] = current_spread
+                    max_pair_spread[nSym][exchange_pairs.index(pair)] = current_pair_spread[nSym][exchange_pairs.index(pair)]
 
                 if (
-                    current_spread < min_pair_spread[nSym][exchange_pairs.index(pair)]
+                    current_pair_spread[nSym][exchange_pairs.index(pair)] < min_pair_spread[nSym][exchange_pairs.index(pair)]
                 ) or (min_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    min_pair_spread[nSym][exchange_pairs.index(pair)] = current_spread
+                    min_pair_spread[nSym][exchange_pairs.index(pair)] = current_pair_spread[nSym][exchange_pairs.index(pair)]
 
                 current_pair_trailing[nSym][exchange_pairs.index(pair)] = (
                     max_pair_spread[nSym][exchange_pairs.index(pair)] * TRAILING_STOP
@@ -418,15 +451,13 @@ if __name__ == "__main__":
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (current_spread >= MIN_MARGIN)
+                    (current_pair_spread[nSym][exchange_pairs.index(pair)] >= MIN_MARGIN)
                     and (
-                        current_spread
+                        current_pair_spread[nSym][exchange_pairs.index(pair)]
                         <= current_pair_trailing[nSym][exchange_pairs.index(pair)]
                     )
                     and (
-                        not opened_trades[nSym][
-                            exchange_pairs.index(pair)
-                        ].get_is_trade_open()
+                        not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open()
                     )
                 ):
 
@@ -436,7 +467,7 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_spread,
+                            current_pair_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
                     )
@@ -444,16 +475,13 @@ if __name__ == "__main__":
                     
                     # Added a way to stop entering new trades
                     if not file_manag.file_exists(FILE_STOP_TRADING):
-                        open_trade(pair, asks, bids, current_spread, temp_exc_buy, temp_exc_sell, symbols[nSym])
+                        open_trade(pair, asks, bids, current_pair_spread[nSym][exchange_pairs.index(pair)], temp_exc_buy, temp_exc_sell, symbols[nSym])
                     else:
                         logger.info(" New Trades are Paused")
 
                     loggerln.info("")
 
-                elif opened_trades[nSym][
-                    exchange_pairs.index(pair)
-                ].get_is_trade_open():
-
+                elif opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
 
                     logger.info(
                         "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
@@ -461,13 +489,13 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_spread,
+                            current_pair_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
                     )
 
-                    if (current_spread < SPREAD_TO_CLOSE_TRADE):
-                        close_trade(pair, asks, bids, symbols[nSym])
+                    if (current_pair_spread[nSym][exchange_pairs.index(pair)] < SPREAD_TO_CLOSE_TRADE):
+                        close_trade(pair, asks, bids, symbols[nSym], current_pair_spread[nSym][exchange_pairs.index(pair)])
                         #rlogger.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
@@ -482,7 +510,7 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_spread,
+                            current_pair_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         )
                     )

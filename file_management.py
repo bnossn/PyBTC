@@ -3,11 +3,18 @@ import csv, os, datetime, pickle
 
 trading_field_names = [
     "Timestamp",
-    "trading Symbol",
-    "buy on",
-    "buy price",
-    "sell on",
-    "sell price",
+    "Trading Symbol",
+    "Opening/Closing",
+    "Spread",
+    "Amount Sym 2",
+    "Bought On",
+    "Ask Price (Sym 1)",
+    "Total Spent Sym 1",
+    "Res. Buying Fees",
+    "Sold On",
+    "Bid Price (Sym 1)",
+    "Total Sold Sym 1",
+    "Res. Selling Fees",
 ]
 
 real_balance_initial_value = 10000
@@ -64,7 +71,18 @@ def init_file(
 
 
 def register_trade(
-    pair, symbol, buying_exchange, amount_bought, selling_exchange, amount_sold
+    symbol,
+    opening_closing,
+    spread,
+    amount_sym2,
+    bought_on,
+    ask_price_sym1,
+    total_spent_sym1,
+    reserved_buying_fees,
+    sold_on,
+    bid_price_sym1,
+    total_sold_sym1,
+    reserved_selling_fees,
 ):
 
     file_name = "./csvFiles/trading.csv"
@@ -77,11 +95,18 @@ def register_trade(
         csv_writer.writerow(
             {
                 "Timestamp": get_timestamp(),
-                "trading Symbol": symbol,
-                "buy on": buying_exchange,
-                "buy price": amount_bought,
-                "sell on": selling_exchange,
-                "sell price": amount_sold,
+                "Trading Symbol": symbol,
+                "Opening/Closing": opening_closing,
+                "Spread": spread,
+                "Amount Sym 2": amount_sym2,
+                "Bought On": bought_on,
+                "Ask Price (Sym 1)": ask_price_sym1,
+                "Total Spent Sym 1": total_spent_sym1,
+                "Res. Buying Fees": reserved_buying_fees,
+                "Sold On": sold_on,
+                "Bid Price (Sym 1)": bid_price_sym1,
+                "Total Sold Sym 1": total_sold_sym1,
+                "Res. Selling Fees": reserved_selling_fees,
             }
         )
 
@@ -189,23 +214,23 @@ def file_exists(file_name):
     else:
         return False
 
+
 def create_file(file_name):
     with open(file_name, "w") as new_file:
         new_file.close()
 
 
 def save_trades_data(trade_data):
-    with open('tradesData.bin', 'wb') as trades_data_file:
+    with open("tradesData.bin", "wb") as trades_data_file:
         pickle.dump(trade_data, trades_data_file)
 
 
 def load_trades_data():
 
-    file_name = 'tradesData.bin'
-    with open(file_name, 'rb') as trades_data_file:
+    file_name = "tradesData.bin"
+    with open(file_name, "rb") as trades_data_file:
         trades_data = pickle.load(trades_data_file)
         return trades_data
-
 
 
 def files_examples():

@@ -12,7 +12,8 @@
 -Store opened trade so the script can go back to wherever it was when it was closed or crashed - ok
 -add timestamp whenever a new ask/bid table is printed. - ok
 -add the spread at wich we entered a trade to the class TradeData - ok
-
+-Add a way to stop new trades - ok
+-Create a log file to have a history of everything that happened when running the code - ok
 
 
 
@@ -24,14 +25,17 @@
         return -1 or whatever ?
 
 
+
+-SE O MERCADO INVERTE, O BOT CONTINUA NO TRADE!!!!! (SPREAD PODE SER >0 QUANDO O MERCADO INVERTE)? 
+Colocar condição Spread -.05 < Spread < 0.5
+
+
+-Arrumar heading do csv, adicionar coluna de preço para cada exchange, 
+qtd de crypto do trade, se esta entrando ou saindo do trade, colocar spread de entrada/saida
+
+
 -You cannot use the money from short selling to enter another trade =O. Better use margin balance to avoid that
 
-
--Create a log file to have a history of everything that happened when running the code
-import logging
-logging.basicConfig(filename='file_name.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
-
-logging.info(string)
 
 -Use the unsync library to do multiprocessing, multithreading and asyncIO all at once.
 
