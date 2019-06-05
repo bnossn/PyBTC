@@ -419,19 +419,25 @@ if __name__ == "__main__":
             for pair in exchange_pairs:
 
 
-                if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
-                    temp_ask = asks[nSym][all_exchanges.index(pair[0])]
-                    temp_bid = bids[nSym][all_exchanges.index(pair[1])]
-                else:
-                    temp_ask = asks[nSym][all_exchanges.index(pair[1])]
-                    temp_bid = bids[nSym][all_exchanges.index(pair[0])]
-                    
+                # Spread for opened trades are calculated in a different manner                
+                if opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
+                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange())]
+                    temp_exc_buy = opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange()
+                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange())]
+                    temp_exc_sell = opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange()
+                else: 
+                    if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
+                        temp_ask = asks[nSym][all_exchanges.index(pair[0])]
+                        temp_exc_buy = pair[0]
+                        temp_bid = bids[nSym][all_exchanges.index(pair[1])]
+                        temp_exc_sell = pair[1]
+                    else:
+                        temp_ask = asks[nSym][all_exchanges.index(pair[1])]
+                        temp_exc_buy = pair[1]
+                        temp_bid = bids[nSym][all_exchanges.index(pair[0])]
+                        temp_exc_sell = pair[0]
                 
                 current_pair_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
-                min_ask_index = asks[nSym][::].index(temp_ask) # FIX ME: if two exchanges have the same ask value this would raise an Error
-                max_bid_index = bids[nSym][::].index(temp_bid) # FIX ME: if two exchanges have the same ask value this would raise an Error
-                temp_exc_buy = all_exchanges[min_ask_index]
-                temp_exc_sell = all_exchanges[max_bid_index]
 
                 # Calculates the all times spread max, min e traling
                 if (
