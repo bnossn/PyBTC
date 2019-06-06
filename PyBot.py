@@ -312,7 +312,7 @@ opened_trades = []
 max_pair_spread = [[], []]
 min_pair_spread = [[], []]
 current_pair_trailing = [[], []]
-current_pair_spread = [[], []]
+current_pairs_spread = [[], []]
 # Trailing is the percentage from the max to trade
 # MIN_MARGIN = 0.8 / 100
 # TRAILING_STOP = 0.8
@@ -374,7 +374,7 @@ if __name__ == "__main__":
     current_pair_trailing = [
         [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
     ]
-    current_pair_spread = [
+    current_pairs_spread = [
         [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
     ]
 
@@ -409,7 +409,7 @@ if __name__ == "__main__":
         loggerln.info(" ")
 
         if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
-            close_all_opened_trades(asks, bids, current_pair_spread)
+            close_all_opened_trades(asks, bids, current_pairs_spread)
             sys.exit()
 
         # !!! find/logging.info opportunities
@@ -421,10 +421,16 @@ if __name__ == "__main__":
 
                 # Spread for opened trades are calculated in a different manner                
                 if opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
-                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange())]
-                    temp_exc_buy = opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange()
-                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange())]
-                    temp_exc_sell = opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange()
+                    # Buy on the one you initially sold and sell on the one you initially bought
+                    temp_exc_buy = opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange()
+                    temp_exc_sell = opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange()
+
+                    # Consider the prices to exit the trade, not the ones used to enter the trade
+                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange())]
+                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange())]                    
+
+                    # To exit the trade, the calculated spread has to be the inverse.
+                    current_pairs_spread[nSym][exchange_pairs.index(pair)] = (temp_ask / temp_bid) - 1
                 else: 
                     if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
                         temp_ask = asks[nSym][all_exchanges.index(pair[0])]
@@ -436,19 +442,18 @@ if __name__ == "__main__":
                         temp_exc_buy = pair[1]
                         temp_bid = bids[nSym][all_exchanges.index(pair[0])]
                         temp_exc_sell = pair[0]
-                
-                current_pair_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
+                    current_pairs_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
 
                 # Calculates the all times spread max, min e traling
                 if (
-                    current_pair_spread[nSym][exchange_pairs.index(pair)] > max_pair_spread[nSym][exchange_pairs.index(pair)]
+                    current_pairs_spread[nSym][exchange_pairs.index(pair)] > max_pair_spread[nSym][exchange_pairs.index(pair)]
                 ) or (max_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    max_pair_spread[nSym][exchange_pairs.index(pair)] = current_pair_spread[nSym][exchange_pairs.index(pair)]
+                    max_pair_spread[nSym][exchange_pairs.index(pair)] = current_pairs_spread[nSym][exchange_pairs.index(pair)]
 
                 if (
-                    current_pair_spread[nSym][exchange_pairs.index(pair)] < min_pair_spread[nSym][exchange_pairs.index(pair)]
+                    current_pairs_spread[nSym][exchange_pairs.index(pair)] < min_pair_spread[nSym][exchange_pairs.index(pair)]
                 ) or (min_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    min_pair_spread[nSym][exchange_pairs.index(pair)] = current_pair_spread[nSym][exchange_pairs.index(pair)]
+                    min_pair_spread[nSym][exchange_pairs.index(pair)] = current_pairs_spread[nSym][exchange_pairs.index(pair)]
 
                 current_pair_trailing[nSym][exchange_pairs.index(pair)] = (
                     max_pair_spread[nSym][exchange_pairs.index(pair)] * TRAILING_STOP
@@ -456,9 +461,9 @@ if __name__ == "__main__":
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (current_pair_spread[nSym][exchange_pairs.index(pair)] >= MIN_MARGIN)
+                    (current_pairs_spread[nSym][exchange_pairs.index(pair)] >= MIN_MARGIN)
                     and (
-                        current_pair_spread[nSym][exchange_pairs.index(pair)]
+                        current_pairs_spread[nSym][exchange_pairs.index(pair)]
                         <= current_pair_trailing[nSym][exchange_pairs.index(pair)]
                     )
                     and (
@@ -472,7 +477,7 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_spread[nSym][exchange_pairs.index(pair)],
+                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
                     )
@@ -480,7 +485,7 @@ if __name__ == "__main__":
                     
                     # Added a way to stop entering new trades
                     if not file_manag.file_exists(FILE_STOP_TRADING):
-                        open_trade(pair, asks, bids, current_pair_spread[nSym][exchange_pairs.index(pair)], temp_exc_buy, temp_exc_sell, symbols[nSym])
+                        open_trade(pair, asks, bids, current_pairs_spread[nSym][exchange_pairs.index(pair)], temp_exc_buy, temp_exc_sell, symbols[nSym])
                     else:
                         logger.info(" New Trades are Paused")
 
@@ -494,13 +499,13 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_spread[nSym][exchange_pairs.index(pair)],
+                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         ),
                     )
 
-                    if (current_pair_spread[nSym][exchange_pairs.index(pair)] < SPREAD_TO_CLOSE_TRADE):
-                        close_trade(pair, asks, bids, symbols[nSym], current_pair_spread[nSym][exchange_pairs.index(pair)])
+                    if (current_pairs_spread[nSym][exchange_pairs.index(pair)] < SPREAD_TO_CLOSE_TRADE):
+                        close_trade(pair, asks, bids, symbols[nSym], current_pairs_spread[nSym][exchange_pairs.index(pair)])
                         #rlogger.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
@@ -515,7 +520,7 @@ if __name__ == "__main__":
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
                             min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_spread[nSym][exchange_pairs.index(pair)],
+                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
                             current_pair_trailing[nSym][exchange_pairs.index(pair)],
                         )
                     )
