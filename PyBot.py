@@ -516,7 +516,7 @@ if __name__ == "__main__":
                         ),
                     )
 
-                    if (current_pairs_spread[nSym][exchange_pairs.index(pair)] < SPREAD_TO_CLOSE_TRADE):
+                    if (current_pairs_spread[nSym][exchange_pairs.index(pair)] <= SPREAD_TO_CLOSE_TRADE):
                         close_trade(pair, asks, bids, symbols[nSym], current_pairs_spread[nSym][exchange_pairs.index(pair)])
                         #rlogger.info("- TRADE CLOSED!!!")
                     else:
