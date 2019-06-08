@@ -16,22 +16,14 @@
 -Create a log file to have a history of everything that happened when running the code - ok
 -Arrumar heading do csv, adicionar coluna de preço para cada exchange, 
 qtd de crypto do trade, se esta entrando ou saindo do trade, colocar spread de entrada/saidao - ok
+-SE O MERCADO INVERTE, O BOT CONTINUA NO TRADE!!!!! Fixed - ok
+-Verify the calc of Spread for closing trade. There is a mismatech between the real spread 
+and the one registered whenever closing trade. Fixed - ok
+-Deal with the timeout errors - ok
 
 
 
--Deal with the timeout errors
-    try:
-        code
-    except: Exception as e:
-        print(e)
-        return -1 or whatever ?
-
-
-
--SE O MERCADO INVERTE, O BOT CONTINUA NO TRADE!!!!! (SPREAD PODE SER >0 QUANDO O MERCADO INVERTE)? 
-Colocar condição Spread -.05 < Spread < 0.5
-
--Verify the calc of Spread for closing trade. There is a mismatech between the real spread and the one registered whenever closing trade. Maybe the above can fix it
+-Correcting the spread calculation bugged the code for find the highest spread pair.
 
 -Fix the ordering of the args of the functions open_trade and close_trade
 

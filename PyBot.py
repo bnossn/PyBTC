@@ -416,7 +416,7 @@ if __name__ == "__main__":
             close_all_opened_trades(asks, bids, current_pairs_spread)
             sys.exit()
 
-        # !!! find/logging.info opportunities
+        # !!! finding/logging opportunities
         for nSym in range(len(symbols)):
             loggerln.info(f"Symbol: {symbols[nSym]} :")
 
@@ -537,26 +537,42 @@ if __name__ == "__main__":
                         )
                     )
 
-            loggerln.info("!!!! Operate on \\/ !!!!")
-
-            # Find exchanges for operations
-            min_ask_index = asks[nSym][::].index(min(asks[nSym][::]))
-            max_bid_index = bids[nSym][::].index(max(bids[nSym][::]))
-
-            loggerln.info(
-                f"Buy/Sell = {all_exchanges[min_ask_index]} / {all_exchanges[max_bid_index]}"
-            )
-            loggerln.info(
-                "Highest Spread: {:.2f}".format(
-                    max(bids[nSym][::]) - min(asks[nSym][::])
+            # Show the best available pair to operate on each symbol
+        
+            operate_pair_spread = -100 # Starts with a pretty low number
+            is_pair_available = False
+            for pair in exchange_pairs:
+                if not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
+                    if operate_pair_spread < current_pairs_spread[nSym][exchange_pairs.index(pair)]:
+                        operate_pair_spread = current_pairs_spread[nSym][exchange_pairs.index(pair)]
+                        temp_min_ask = min(asks[nSym][all_exchanges.index(pair[0])], asks[nSym][all_exchanges.index(pair[1])])
+                        temp_max_bid = max(bids[nSym][all_exchanges.index(pair[0])], bids[nSym][all_exchanges.index(pair[1])])
+                        is_pair_available = True
+            
+            if is_pair_available:
+                min_ask_index = asks[nSym][::].index(temp_min_ask)
+                max_bid_index = bids[nSym][::].index(temp_max_bid)
+                loggerln.info("!!!! Operate on \\/ !!!!")
+                loggerln.info(
+                    f"Buy/Sell = {all_exchanges[min_ask_index]} / {all_exchanges[max_bid_index]}"
                 )
-            )
+                loggerln.info(
+                    "Highest Absolute Spread: {:.2f}".format(
+                        temp_max_bid - temp_min_ask
+                    )
+                )
 
-            # temp_max_spread handles ZeroDivisionError
-            temp_max_spread = ((max(bids[nSym][::]) / min(asks[nSym][::])) - 1) if min(asks[nSym][::]) != 0 else 0
-            loggerln.info("% Spread: {:.2%}".format(temp_max_spread))
+                # temp_max_spread handles ZeroDivisionError
+                loggerln.info("% Spread: {:.2%}".format(operate_pair_spread))
+                # loggerln.info("% Spread: {:.2%}".format(((max(bids[nSym][::]) / min(asks[nSym][::])) - 1)))
+            else:
+                loggerln.info("There are no Pairs Available for Trading")
 
             loggerln.info(" ")
-        # !!! \find/logging.info opportunities
+            # \Show the best available pair to operate on each symbol
+
+        # !!! \finding/logging opportunities
+
+
 
         loggerln.info("----------------------------------------------------------------")
