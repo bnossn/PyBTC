@@ -16,13 +16,13 @@ root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.append(root + "/python")
 
 async def async_client(exchange):
-    # client = getattr(ccxta, exchange)()
     tickers = {}
-    client = getattr(ccxta, exchange)(
-        {"enableRateLimit": True}  # required accoding to the Manual
-    )
-    await client.load_markets()
     try:
+        # client = getattr(ccxta, exchange)()
+        client = getattr(ccxta, exchange)(
+            {"enableRateLimit": True}  # required accoding to the Manual
+        )
+        await client.load_markets()
         for i in range(len(symbols)):
 
             if symbols[i] not in client.symbols:
@@ -30,12 +30,7 @@ async def async_client(exchange):
 
             tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
 
-        await client.close()
         return tickers
-    except ccxt.BaseError as e:
-        print(type(e).__name__, str(e), str(e.args))
-        print("Caught Error within async_client")
-        raise e
     finally:
         await client.close()
 
@@ -263,7 +258,7 @@ def close_all_opened_trades(asks_list, bids_list, current_spreads_list):
 
 
 def init():
-    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger
+    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger, is_online
     
 
     if not file_manag.file_exists(LOG_FILE_NAME):
@@ -297,6 +292,9 @@ def init():
         # Update the opened_trades object file
         file_manag.save_trades_data(opened_trades)
 
+
+    is_online = [False for i in range(len(all_exchanges))]
+
     pass
 
 
@@ -304,6 +302,8 @@ def init():
 symbols = ["BTC/USD", "ETH/USD"]
 # Exchanges to trade
 all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
+# Holds whether an exchange fetch was not successful
+is_online = []
 # All possible trading Pairs:
 exchange_pairs = list_unique_pairs(all_exchanges)
 # Usado  para gravar as operacoes em aberto e para garantir que o bot não entrará na mesma operação duas vezes.
@@ -389,19 +389,23 @@ if __name__ == "__main__":
 
         # !!! Fetch data
         tic = time.time()
-        a1 = asyncio.get_event_loop().run_until_complete(
-            multi_orderbooks(all_exchanges)
-        )
+        loop = asyncio.get_event_loop()
+        a1 = loop.run_until_complete(multi_orderbooks(all_exchanges))
 
         loggerln.info("async call spend: {:.2f}  -  TimeStamp: {}".format((time.time() - tic), str(file_manag.get_timestamp())))
         # !!! \Fetch data
         loggerln.info(" ")
 
+        # Update the isOnline list according to the returned values/exceptions
+        for i in range(len(all_exchanges)):
+            is_online[i] = not isinstance(a1[i], Exception)
+
         # !!! Take Bids/Asks
         for nSym in range(len(symbols)):
             for index, exchange in enumerate(a1):
-                bids[nSym][index] = exchange[symbols[nSym]]["bids"][0][0]
-                asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
+                if is_online[index]:
+                    bids[nSym][index] = exchange[symbols[nSym]]["bids"][0][0]
+                    asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
         # !!! \Take Bids/Asks
 
         loggerln.info(f"bids: {bids}")
@@ -417,7 +421,15 @@ if __name__ == "__main__":
             loggerln.info(f"Symbol: {symbols[nSym]} :")
 
             for pair in exchange_pairs:
-
+                
+                # Check if any of the two exchanges are offline and do nothing if so
+                if (not is_online[all_exchanges.index(pair[0])]) or (not is_online[all_exchanges.index(pair[1])]):
+                    logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
+                    logger.info(" - {} = ".format(pair[0], ))
+                    logger.info("Online") if is_online[all_exchanges.index(pair[0])] else logger.info("Offline")
+                    logger.info(" / {} = ".format(pair[1], ))
+                    loggerln.info("Online") if is_online[all_exchanges.index(pair[1])] else loggerln.info("Offline")
+                    continue
 
                 # Spread for opened trades are calculated in a different manner                
                 if opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
@@ -472,7 +484,7 @@ if __name__ == "__main__":
                 ):
 
                     logger.info(
-                        "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
+                        "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
@@ -494,7 +506,7 @@ if __name__ == "__main__":
                 elif opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
 
                     logger.info(
-                        "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
+                        "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
@@ -515,7 +527,7 @@ if __name__ == "__main__":
                 else:
 
                     loggerln.info(
-                        "Pairs (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
+                        "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
                             max_pair_spread[nSym][exchange_pairs.index(pair)],
@@ -539,11 +551,11 @@ if __name__ == "__main__":
                     max(bids[nSym][::]) - min(asks[nSym][::])
                 )
             )
-            loggerln.info(
-                "% Spread: {:.2%}".format(
-                    ((max(bids[nSym][::]) / min(asks[nSym][::])) - 1)
-                )
-            )
+
+            # temp_max_spread handles ZeroDivisionError
+            temp_max_spread = ((max(bids[nSym][::]) / min(asks[nSym][::])) - 1) if min(asks[nSym][::]) != 0 else 0
+            loggerln.info("% Spread: {:.2%}".format(temp_max_spread))
+
             loggerln.info(" ")
         # !!! \find/logging.info opportunities
 
