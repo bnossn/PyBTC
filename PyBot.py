@@ -7,7 +7,7 @@ import time
 
 import BotLogging
 import trade_mod
-from trade_mod import TradeData
+from trade_mod import TradeData, PairData
 import file_management as file_manag
 import ccxt
 import ccxt.async_support as ccxta  # noqa: E402
@@ -177,7 +177,7 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 
 
 def close_trade(pair, asks_list, bids_list, symbol, spread):
-    global opened_trades, max_pair_spread, min_pair_spread, current_pair_trailing
+    global opened_trades, pairs_data
 
     loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
 
@@ -242,23 +242,21 @@ def close_trade(pair, asks_list, bids_list, symbol, spread):
     file_manag.save_trades_data(opened_trades)
 
     # Zero max/min spread and trailing data
-    max_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
-    min_pair_spread[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
-    current_pair_trailing[symbols.index(symbol)][exchange_pairs.index(pair)] = 0
+    pairs_data[symbols.index(symbol)][exchange_pairs.index(pair)] = PairData(pair)
 
     pass
 
 
-def close_all_opened_trades(asks_list, bids_list, current_spreads_list):
+def close_all_opened_trades(asks_list, bids_list, pairs_data_list):
 
     for symbol in symbols:
         for pair in exchange_pairs:
             if opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_is_trade_open():
-                close_trade(pair, asks_list, bids_list, symbol, current_spreads_list[symbols.index(symbol)][exchange_pairs.index(pair)])
+                close_trade(pair, asks_list, bids_list, symbol, pairs_data_list[symbols.index(symbol)][exchange_pairs.index(pair)].get_curr_spread())
 
 
 def init():
-    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger, is_online
+    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger, is_online, pairs_data
     
 
     if not file_manag.file_exists(LOG_FILE_NAME):
@@ -286,11 +284,18 @@ def init():
     else:
         # Holds all possible combinations trading pairs/symbols and stores a TradeData for each
         opened_trades = [
-            [TradeData(exchange_pairs[x]) for x in range(len(exchange_pairs))]
+            [TradeData(pair) for pair in exchange_pairs]
             for y in range(len(symbols))
         ]
         # Update the opened_trades object file
         file_manag.save_trades_data(opened_trades)
+
+
+    # Holds all possible combinations trading pairs/symbols and stores a PairData for each
+    pairs_data = [
+            [PairData(pair) for pair in exchange_pairs]
+            for y in range(len(symbols))
+        ]
 
 
     is_online = [False for i in range(len(all_exchanges))]
@@ -306,20 +311,23 @@ all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
 is_online = []
 # All possible trading Pairs:
 exchange_pairs = list_unique_pairs(all_exchanges)
-# Usado  para gravar as operacoes em aberto e para garantir que o bot não entrará na mesma operação duas vezes.
+# Usado  para gravar os TradeData e para garantir que o bot não entrará na mesma operação duas vezes.
 opened_trades = []
+#Used mainly to record the spread data of each pair / symbol 
+pairs_data = []
 
-max_pair_spread = [[], []]
-min_pair_spread = [[], []]
-current_pair_trailing = [[], []]
-current_pairs_spread = [[], []]
+# max_pair_spread = [[], []]
+# min_pair_spread = [[], []]
+# current_pair_trailing = [[], []]
+# current_pairs_spread = [[], []]
+
 # Trailing is the percentage from the max to trade
 # MIN_MARGIN = 0.8 / 100
 # TRAILING_STOP = 0.8
 # SPREAD_TO_CLOSE_TRADE = 0.0/100
 MIN_MARGIN = 0.2 / 100
 TRAILING_STOP = 0.99
-SPREAD_TO_CLOSE_TRADE = 1 /100
+SPREAD_TO_CLOSE_TRADE = 0 /100
 
 
 # FIX ME: balances NOT USED
@@ -364,19 +372,6 @@ if __name__ == "__main__":
     loggerln.info(f"fees_balance = {fees_balance}")
     loggerln.info(" ")
 
-    # Lists of pair values need an initial zero value for the code to work
-    max_pair_spread = [
-        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
-    ]
-    min_pair_spread = [
-        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
-    ]
-    current_pair_trailing = [
-        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
-    ]
-    current_pairs_spread = [
-        [0 for x in range(len(exchange_pairs))] for y in range(len(symbols))
-    ]
 
     while True:
 
@@ -413,14 +408,14 @@ if __name__ == "__main__":
         loggerln.info(" ")
 
         if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
-            close_all_opened_trades(asks, bids, current_pairs_spread)
+            close_all_opened_trades(asks, bids, pairs_data)
             sys.exit()
 
         # !!! finding/logging opportunities
         for nSym in range(len(symbols)):
             loggerln.info(f"Symbol: {symbols[nSym]} :")
 
-            for pair in exchange_pairs:
+            for nPair, pair in enumerate(exchange_pairs):
                 
                 # Check if any of the two exchanges are offline and do nothing if so
                 if (not is_online[all_exchanges.index(pair[0])]) or (not is_online[all_exchanges.index(pair[1])]):
@@ -431,52 +426,59 @@ if __name__ == "__main__":
                     loggerln.info("Online") if is_online[all_exchanges.index(pair[1])] else loggerln.info("Offline")
                     continue
 
+
                 # Spread for opened trades are calculated in a different manner                
-                if opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
+                if opened_trades[nSym][nPair].get_is_trade_open():
                     # Buy on the one you initially sold and sell on the one you initially bought
-                    temp_exc_buy = opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange()
-                    temp_exc_sell = opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange()
+                    temp_exc_buy = opened_trades[nSym][nPair].get_selling_exchange()
+                    temp_exc_sell = opened_trades[nSym][nPair].get_buying_exchange()
 
                     # Consider the prices to exit the trade, not the ones used to enter the trade
-                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_selling_exchange())]
-                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][exchange_pairs.index(pair)].get_buying_exchange())]                    
+                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][nPair].get_selling_exchange())]
+                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][nPair].get_buying_exchange())]                    
 
                     # To exit the trade, the calculated spread has to be the inverse.
-                    current_pairs_spread[nSym][exchange_pairs.index(pair)] = (temp_ask / temp_bid) - 1
+                    pairs_data[nSym][nPair].set_curr_spread((temp_ask / temp_bid) - 1)
                 else: 
-                    if asks[nSym][all_exchanges.index(pair[0])] < asks[nSym][all_exchanges.index(pair[1])]:
-                        temp_ask = asks[nSym][all_exchanges.index(pair[0])]
-                        temp_exc_buy = pair[0]
-                        temp_bid = bids[nSym][all_exchanges.index(pair[1])]
-                        temp_exc_sell = pair[1]
-                    else:
+                    
+                    temp_spread_1 = (bids[nSym][all_exchanges.index(pair[0])] / asks[nSym][all_exchanges.index(pair[1])]) - 1
+                    temp_spread_2 = (bids[nSym][all_exchanges.index(pair[1])] / asks[nSym][all_exchanges.index(pair[0])]) - 1
+
+                    if (temp_spread_1 > temp_spread_2):
                         temp_ask = asks[nSym][all_exchanges.index(pair[1])]
                         temp_exc_buy = pair[1]
                         temp_bid = bids[nSym][all_exchanges.index(pair[0])]
                         temp_exc_sell = pair[0]
-                    current_pairs_spread[nSym][exchange_pairs.index(pair)] = (temp_bid / temp_ask) - 1
+                    else:
+                        temp_ask = asks[nSym][all_exchanges.index(pair[0])]
+                        temp_exc_buy = pair[0]
+                        temp_bid = bids[nSym][all_exchanges.index(pair[1])]
+                        temp_exc_sell = pair[1]
+                    pairs_data[nSym][nPair].set_curr_spread((temp_bid / temp_ask) - 1)
+
 
                 # Calculates the all times spread max, min e traling
                 if (
-                    current_pairs_spread[nSym][exchange_pairs.index(pair)] > max_pair_spread[nSym][exchange_pairs.index(pair)]
-                ) or (max_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    max_pair_spread[nSym][exchange_pairs.index(pair)] = current_pairs_spread[nSym][exchange_pairs.index(pair)]
+                    pairs_data[nSym][nPair].get_curr_spread() > pairs_data[nSym][nPair].get_max_spread()
+                ) or (pairs_data[nSym][nPair].get_max_spread() == 0):
+                    pairs_data[nSym][nPair].set_max_spread(pairs_data[nSym][nPair].get_curr_spread())
+
+                    pairs_data[nSym][nPair].set_curr_trailing(pairs_data[nSym][nPair].get_max_spread() * TRAILING_STOP)
+
 
                 if (
-                    current_pairs_spread[nSym][exchange_pairs.index(pair)] < min_pair_spread[nSym][exchange_pairs.index(pair)]
-                ) or (min_pair_spread[nSym][exchange_pairs.index(pair)] == 0):
-                    min_pair_spread[nSym][exchange_pairs.index(pair)] = current_pairs_spread[nSym][exchange_pairs.index(pair)]
+                    pairs_data[nSym][nPair].get_curr_spread() < pairs_data[nSym][nPair].get_min_spread()
+                ) or (pairs_data[nSym][nPair].get_min_spread() == 0):
+                    pairs_data[nSym][nPair].set_min_spread(pairs_data[nSym][nPair].get_curr_spread())
+                
+                # \Calculates the all times spread max, min e traling
 
-                current_pair_trailing[nSym][exchange_pairs.index(pair)] = (
-                    max_pair_spread[nSym][exchange_pairs.index(pair)] * TRAILING_STOP
-                )
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (current_pairs_spread[nSym][exchange_pairs.index(pair)] >= MIN_MARGIN)
+                    (pairs_data[nSym][nPair].get_curr_spread() >= MIN_MARGIN)
                     and (
-                        current_pairs_spread[nSym][exchange_pairs.index(pair)]
-                        <= current_pair_trailing[nSym][exchange_pairs.index(pair)]
+                        pairs_data[nSym][nPair].get_curr_spread() <= pairs_data[nSym][nPair].get_curr_trailing()
                     )
                     and (
                         not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open()
@@ -487,17 +489,17 @@ if __name__ == "__main__":
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            max_pair_spread[nSym][exchange_pairs.index(pair)],
-                            min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_trailing[nSym][exchange_pairs.index(pair)],
+                            pairs_data[nSym][nPair].get_max_spread(),
+                            pairs_data[nSym][nPair].get_min_spread() ,
+                            pairs_data[nSym][nPair].get_curr_spread(),
+                            pairs_data[nSym][nPair].get_curr_trailing(),
                         ),
                     )
                     logger.info(" - Opportunity Found!")
                     
                     # Added a way to stop entering new trades
                     if not file_manag.file_exists(FILE_STOP_TRADING):
-                        open_trade(pair, asks, bids, current_pairs_spread[nSym][exchange_pairs.index(pair)], temp_exc_buy, temp_exc_sell, symbols[nSym])
+                        open_trade(pair, asks, bids, pairs_data[nSym][nPair].get_curr_spread(), temp_exc_buy, temp_exc_sell, symbols[nSym])
                     else:
                         logger.info(" New Trades are Paused")
 
@@ -509,15 +511,15 @@ if __name__ == "__main__":
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            max_pair_spread[nSym][exchange_pairs.index(pair)],
-                            min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_trailing[nSym][exchange_pairs.index(pair)],
+                            pairs_data[nSym][nPair].get_max_spread(),
+                            pairs_data[nSym][nPair].get_min_spread(),
+                            pairs_data[nSym][nPair].get_curr_spread(),
+                            pairs_data[nSym][nPair].get_curr_trailing(),
                         ),
                     )
 
-                    if (current_pairs_spread[nSym][exchange_pairs.index(pair)] <= SPREAD_TO_CLOSE_TRADE):
-                        close_trade(pair, asks, bids, symbols[nSym], current_pairs_spread[nSym][exchange_pairs.index(pair)])
+                    if (pairs_data[nSym][nPair].get_curr_spread() <= SPREAD_TO_CLOSE_TRADE):
+                        close_trade(pair, asks, bids, symbols[nSym], pairs_data[nSym][nPair].get_curr_spread())
                         #rlogger.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
@@ -530,21 +532,22 @@ if __name__ == "__main__":
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            max_pair_spread[nSym][exchange_pairs.index(pair)],
-                            min_pair_spread[nSym][exchange_pairs.index(pair)],
-                            current_pairs_spread[nSym][exchange_pairs.index(pair)],
-                            current_pair_trailing[nSym][exchange_pairs.index(pair)],
+                            pairs_data[nSym][nPair].get_max_spread(),
+                            pairs_data[nSym][nPair].get_min_spread(),
+                            pairs_data[nSym][nPair].get_curr_spread(),
+                            pairs_data[nSym][nPair].get_curr_trailing(),
                         )
                     )
+                # \Verificar condicao para entrar no trade
 
             # Show the best available pair to operate on each symbol
         
             operate_pair_spread = -100 # Starts with a pretty low number
             is_pair_available = False
-            for pair in exchange_pairs:
+            for nPair, pair in enumerate(exchange_pairs):
                 if not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
-                    if operate_pair_spread < current_pairs_spread[nSym][exchange_pairs.index(pair)]:
-                        operate_pair_spread = current_pairs_spread[nSym][exchange_pairs.index(pair)]
+                    if operate_pair_spread < pairs_data[nSym][nPair].get_curr_spread():
+                        operate_pair_spread = pairs_data[nSym][nPair].get_curr_spread()
                         temp_min_ask = min(asks[nSym][all_exchanges.index(pair[0])], asks[nSym][all_exchanges.index(pair[1])])
                         temp_max_bid = max(bids[nSym][all_exchanges.index(pair[0])], bids[nSym][all_exchanges.index(pair[1])])
                         is_pair_available = True

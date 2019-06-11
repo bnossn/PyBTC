@@ -6,6 +6,43 @@ def sell_token(selling_exchange, amount, symbol):
     pass
 
 
+class PairData:
+    def __init__(self, exchange_pair):
+        self.exchange_pair = exchange_pair
+
+        self.max_spread = 0
+        self.min_spread = 0
+        self.curr_trailing = 0
+        self.curr_spread = 0
+
+    def set_max_spread(self, max_spread):
+        self.max_spread = max_spread
+
+    def set_min_spread(self, min_spread):
+        self.min_spread = min_spread
+
+    def set_curr_trailing(self, curr_trailing):
+        self.curr_trailing = curr_trailing
+
+    def set_curr_spread(self, curr_spread):
+        self.curr_spread = curr_spread
+
+    def get_exchange_pair(self):
+        return self.exchange_pair
+
+    def get_max_spread(self):
+        return self.max_spread
+
+    def get_min_spread(self):
+        return self.min_spread
+
+    def get_curr_trailing(self):
+        return self.curr_trailing
+
+    def get_curr_spread(self):
+        return self.curr_spread
+
+
 class TradeData:
     def __init__(self, exchange_pair):
         self.exchange_pair = exchange_pair
@@ -13,13 +50,15 @@ class TradeData:
 
         self.buying_exchange = ""
         self.amount_bought_symbol1 = 0
-        self.fee_reserved_buying_exchange = 0 # given in symbol 1
+        self.fee_reserved_buying_exchange = 0  # given in symbol 1
 
         self.selling_exchange = ""
         self.amount_sold_symbol1 = 0
-        self.fee_reserved_selling_exchange = 0 # given in symbol 1
+        self.fee_reserved_selling_exchange = 0  # given in symbol 1
 
-        self.amount_traded_symbol2 = 0 #The same for both exchanges to keep market neutral
+        self.amount_traded_symbol2 = (
+            0
+        )  # The same for both exchanges to keep market neutral
         self.opportunity_spread = 0
         self.is_trade_open = False
 
@@ -48,13 +87,13 @@ class TradeData:
         self.fee_reserved_selling_exchange = fee_reserved_selling_exchange
 
     def set_amount_traded_symbol2(self, amount_traded_symbol2):
-        self.amount_traded_symbol2 = amount_traded_symbol2 
+        self.amount_traded_symbol2 = amount_traded_symbol2
 
     def set_opportunity_spread(self, opportunity_spread):
         self.opportunity_spread = opportunity_spread
 
     def set_is_trade_open(self, is_trade_open):
-        self.is_trade_open = is_trade_open        
+        self.is_trade_open = is_trade_open
 
     def get_is_trade_open(self):
         return self.is_trade_open
@@ -82,10 +121,14 @@ class TradeData:
         result += f"traded_symbol = {self.traded_symbol}, "
         result += f"buying_exchange = {self.buying_exchange}, "
         result += f"amount_bought_symbol1 = {self.amount_bought_symbol1}, "
-        result += f"fee_reserved_buying_exchange = {self.fee_reserved_buying_exchange}, "
+        result += (
+            f"fee_reserved_buying_exchange = {self.fee_reserved_buying_exchange}, "
+        )
         result += f"selling_exchange = {self.selling_exchange}, "
         result += f"amount_sold_symbol1 = {self.amount_sold_symbol1}, "
-        result += f"fee_reserved_selling_exchange = {self.fee_reserved_selling_exchange}, "
+        result += (
+            f"fee_reserved_selling_exchange = {self.fee_reserved_selling_exchange}, "
+        )
         result += f"amount_traded_symbol2 = {self.amount_traded_symbol2}, "
         result += f"is_trade_open = {self.is_trade_open}"
         return result
@@ -101,5 +144,5 @@ class TradeData:
             self.amount_sold_symbol1,
             self.fee_reserved_selling_exchange,
             self.amount_traded_symbol2,
-            self.is_trade_open
+            self.is_trade_open,
         )

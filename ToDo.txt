@@ -20,13 +20,31 @@ qtd de crypto do trade, se esta entrando ou saindo do trade, colocar spread de e
 -Verify the calc of Spread for closing trade. There is a mismatech between the real spread 
 and the one registered whenever closing trade. Fixed - ok
 -Deal with the timeout errors - ok
+-Correcting the spread calculation bugged the code for find the highest spread pair - Fixed - ok
 
 
 
--Correcting the spread calculation bugged the code for find the highest spread pair.
+-Change the way you deaal with PairData
+    -Verify the spread for each oppotunity
+    -test trades,
+    -close all trades file
+    -stop trading file
+
+
+
+-Note: the cash used for a trade will be the minimum of the two exchanges, minus 1.00% as a small margin: 
+if there is $1,000 on the first account and $1,100 on the second one, $990 will be used for each exchange, i.e. $1,000 - (1% * $1,000). The exposure is $1,980
+
+-Create a SpreadTarget that takes into account the fees. SpreadTarget = The targeted profit
+If SpreadEntry is at 0.80% and trades are generated at that level on two exchanges with 0.25% fees each, Blackbird will set the exit threshold at -0.70% (0.80% spread entry - 4x0.25% fees - 0.50% target = -0.70%)
+res.exitTarget = res.spreadIn - params.spreadTarget - 2.0*(res.feesLong + res.feesShort);
+Use checkEntry / checkExit Functions?
+
+-Add trailling for closing a trade as well. (Opposite to that for openning the trade)
+
+-Do the exchange commands time management manually
 
 -Fix the ordering of the args of the functions open_trade and close_trade
-
 
 -You cannot use the money from short selling to enter another trade =O. Better use margin balance to avoid that
 
