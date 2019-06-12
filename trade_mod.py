@@ -12,7 +12,7 @@ class PairData:
 
         self.max_spread = 0
         self.min_spread = 0
-        self.curr_trailing = 0
+        self.curr_trailing = -1
         self.curr_spread = 0
 
     def set_max_spread(self, max_spread):
@@ -51,15 +51,18 @@ class TradeData:
         self.buying_exchange = ""
         self.amount_bought_symbol1 = 0
         self.fee_reserved_buying_exchange = 0  # given in symbol 1
+        self.abs_buy_entry_fee = 0
 
         self.selling_exchange = ""
         self.amount_sold_symbol1 = 0
         self.fee_reserved_selling_exchange = 0  # given in symbol 1
+        self.abs_sell_entry_fee = 0
 
         self.amount_traded_symbol2 = (
             0
         )  # The same for both exchanges to keep market neutral
-        self.opportunity_spread = 0
+        self.exit_spread = 0
+        self.entry_spread = 0
         self.is_trade_open = False
 
     def set_exchange_pair(self, exchange_pair):
@@ -89,11 +92,20 @@ class TradeData:
     def set_amount_traded_symbol2(self, amount_traded_symbol2):
         self.amount_traded_symbol2 = amount_traded_symbol2
 
-    def set_opportunity_spread(self, opportunity_spread):
-        self.opportunity_spread = opportunity_spread
+    def set_entry_spread(self, entry_spread):
+        self.entry_spread = entry_spread
 
     def set_is_trade_open(self, is_trade_open):
         self.is_trade_open = is_trade_open
+
+    def set_exit_spread(self, exit_spread):
+        self.exit_spread = exit_spread
+
+    def set_abs_buy_entry_fee(self, abs_buy_entry_fee):
+        self.abs_buy_entry_fee = abs_buy_entry_fee
+
+    def set_abs_sell_entry_fee(self, abs_sell_entry_fee):
+        self.abs_sell_entry_fee = abs_sell_entry_fee
 
     def get_is_trade_open(self):
         return self.is_trade_open
@@ -104,17 +116,32 @@ class TradeData:
     def get_selling_exchange(self):
         return self.selling_exchange
 
+    def get_amount_bought_symbol1(self):
+        return self.amount_bought_symbol1
+
+    def get_amount_sold_symbol1(self):
+        return self.amount_sold_symbol1
+
     def get_amount_traded_symbol2(self):
         return self.amount_traded_symbol2
 
-    def get_opportunity_spread(self):
-        return self.opportunity_spread
+    def get_entry_spread(self):
+        return self.entry_spread
 
     def get_fee_reserved_buying_exchange(self):
         return self.fee_reserved_buying_exchange
 
     def get_fee_reserved_selling_exchange(self):
         return self.fee_reserved_selling_exchange
+
+    def get_exit_spread(self):
+        return self.exit_spread
+
+    def get_abs_buy_entry_fee(self):
+        return self.abs_buy_entry_fee
+
+    def get_abs_sell_entry_fee(self):
+        return self.abs_sell_entry_fee
 
     def __str__(self):
         result = f"exchange_pair = {self.exchange_pair}, "

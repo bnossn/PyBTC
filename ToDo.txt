@@ -22,6 +22,7 @@ and the one registered whenever closing trade. Fixed - ok
 -Deal with the timeout errors - ok
 -Correcting the spread calculation bugged the code for find the highest spread pair - Fixed - ok
 
+-Fixed a bug when a calculating minimum Spread
 
 
 -Change the way you deaal with PairData

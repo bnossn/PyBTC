@@ -10,16 +10,19 @@ trading_field_names = [
     "Bought On",
     "Ask Price (Sym 1)",
     "Total Spent Sym 1",
-    "Res. Buying Fees",
+    "Total Buying Fees",
+    "Res. Buying Reserve",
     "Sold On",
     "Bid Price (Sym 1)",
     "Total Sold Sym 1",
-    "Res. Selling Fees",
+    "Total Selling Fees",
+    "Res. Selling Reserve",
+    "Opportunity Profit",
 ]
 
 real_balance_initial_value = 10000
 margin_balance_initial_value = 0
-fees_balance_initial_value = 0
+reserve_balance_initial_value = 0
 
 
 def init_all_files(all_exchanges):
@@ -41,12 +44,12 @@ def init_all_files(all_exchanges):
     ):  # if file was just created, assign initial values
         assign_balance_initial_value(all_exchanges, "margin_balance")
 
-    file_name = "./csvFiles/fees_balance.csv"
+    file_name = "./csvFiles/reserve_balance.csv"
     field_name = ["Timestamp"] + all_exchanges
     if not init_file(
         file_name, field_name
     ):  # if file was just created, assign initial values
-        assign_balance_initial_value(all_exchanges, "fees_balance")
+        assign_balance_initial_value(all_exchanges, "reserve_balance")
 
 
 def init_file(
@@ -78,11 +81,14 @@ def register_trade(
     bought_on,
     ask_price_sym1,
     total_spent_sym1,
-    reserved_buying_fees,
+    total_buying_fees,
+    reserved_buying,
     sold_on,
     bid_price_sym1,
     total_sold_sym1,
-    reserved_selling_fees,
+    total_selling_fees,
+    reserved_selling,
+    total_profit
 ):
 
     file_name = "./csvFiles/trading.csv"
@@ -102,22 +108,25 @@ def register_trade(
                 "Bought On": bought_on,
                 "Ask Price (Sym 1)": ask_price_sym1,
                 "Total Spent Sym 1": total_spent_sym1,
-                "Res. Buying Fees": reserved_buying_fees,
+                "Total Buying Fees": total_buying_fees,
+                "Res. Buying Reserve": reserved_buying,
                 "Sold On": sold_on,
                 "Bid Price (Sym 1)": bid_price_sym1,
                 "Total Sold Sym 1": total_sold_sym1,
-                "Res. Selling Fees": reserved_selling_fees,
+                "Total Selling Fees": total_selling_fees,
+                "Res. Selling Reserve": reserved_selling,
+                "Opportunity Profit": total_profit,
             }
         )
 
 
-def updt_balance_files(all_exchanges, real_balance, margin_balance, fees_balance):
+def updt_balance_files(all_exchanges, real_balance, margin_balance, reserve_balance):
 
     updt_balance_file(all_exchanges, "real_balance", real_balance)
 
     updt_balance_file(all_exchanges, "margin_balance", margin_balance)
 
-    updt_balance_file(all_exchanges, "fees_balance", fees_balance)
+    updt_balance_file(all_exchanges, "reserve_balance", reserve_balance)
 
 
 def updt_balance_file(all_exchanges, balance_type, balance):
@@ -126,8 +135,8 @@ def updt_balance_file(all_exchanges, balance_type, balance):
         file_name = "./csvFiles/real_balance.csv"
     elif balance_type == "margin_balance":
         file_name = "./csvFiles/margin_balance.csv"
-    elif balance_type == "fees_balance":
-        file_name = "./csvFiles/fees_balance.csv"
+    elif balance_type == "reserve_balance":
+        file_name = "./csvFiles/reserve_balance.csv"
     else:
         return
 
@@ -153,7 +162,7 @@ def fetch_stored_balances():
 
     temp_dict["real_balance"] = last_row("./csvFiles/real_balance.csv")
     temp_dict["margin_balance"] = last_row("./csvFiles/margin_balance.csv")
-    temp_dict["fees_balance"] = last_row("./csvFiles/fees_balance.csv")
+    temp_dict["reserve_balance"] = last_row("./csvFiles/reserve_balance.csv")
 
     return temp_dict
 
@@ -166,9 +175,9 @@ def assign_balance_initial_value(all_exchanges, balance_type):
     elif balance_type == "margin_balance":
         file_name = "./csvFiles/margin_balance.csv"
         balance_value = margin_balance_initial_value
-    elif balance_type == "fees_balance":
-        file_name = "./csvFiles/fees_balance.csv"
-        balance_value = fees_balance_initial_value
+    elif balance_type == "reserve_balance":
+        file_name = "./csvFiles/reserve_balance.csv"
+        balance_value = reserve_balance_initial_value
     else:
         return
 

@@ -74,11 +74,11 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
         amount_sold_sym1 = real_balance[all_exchanges.index(selling_exchange)]
 
 
-    trading_buying_fees = amount_bought_sym1 * FEES_FACTOR # garantees you`re going to have money for fees (updated later)
-    amount_bought_sym1 -= trading_buying_fees
+    trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR # garantees you`re going to have money for fees (updated later)
+    amount_bought_sym1 -= trading_buying_reserve
 
-    trading_selling_fees = amount_sold_sym1 * FEES_FACTOR # garantees you`re going to have money for fees updated later)
-    amount_sold_sym1 -= trading_selling_fees
+    trading_selling_reserve = amount_sold_sym1 * FEES_FACTOR # garantees you`re going to have money for fees updated later)
+    amount_sold_sym1 -= trading_selling_reserve
 
 
     ask_price = asks_list[symbols.index(symbol)][all_exchanges.index(buying_exchange)]
@@ -101,30 +101,41 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     amount_sold_sym1 = bid_price * amount_traded_sym2
 
 
-    # update the fee amount to avoid to much fee reserved on either exchange.
-    trading_buying_fees = amount_bought_sym1 * FEES_FACTOR
-    trading_selling_fees = amount_sold_sym1 * FEES_FACTOR
+    # Calculates the absolute fee paid on each exchange
+    perc_buying_fee = exchanges_fees[all_exchanges.index(buying_exchange)] # % of fees buying exchange
+    perc_selling_fee = exchanges_fees[all_exchanges.index(selling_exchange)] # % of fees selling exchange
 
+    abs_buy_entry_fee = amount_bought_sym1 * perc_buying_fee
+    abs_sell_entry_fee = amount_sold_sym1 * perc_selling_fee
 
+    # update the reserve amount to avoid to much fee reserved on either exchange.
+    trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR
+    trading_selling_reserve = amount_sold_sym1 * FEES_FACTOR
+
+    # decrease the fee paid from the reserve
+    trading_buying_reserve -= abs_buy_entry_fee
+    trading_selling_reserve -= abs_sell_entry_fee
 
     # Round all amounts here before trading (Try to avoid float point hardware approximation)
     amount_bought_sym1 = round(amount_bought_sym1, 2)
     amount_sold_sym1 = round(amount_sold_sym1, 2)
-    trading_buying_fees = round(trading_buying_fees, 2)
-    trading_selling_fees = round(trading_selling_fees, 2)
+    trading_buying_reserve = round(trading_buying_reserve, 2)
+    trading_selling_reserve = round(trading_selling_reserve, 2)
+    abs_buy_entry_fee = round(abs_buy_entry_fee, 2)
+    abs_sell_entry_fee = round(abs_sell_entry_fee, 2)
 
 
     trade_mod.buy_token(buying_exchange, amount_bought_sym1, symbol)
     trade_mod.sell_token(selling_exchange, amount_sold_sym1, symbol) # Short sell
 
     # Update Balances
-    real_balance[all_exchanges.index(buying_exchange)] -= (amount_bought_sym1 + trading_buying_fees)
-    fees_balance[all_exchanges.index(buying_exchange)] += trading_buying_fees
+    real_balance[all_exchanges.index(buying_exchange)] -= (amount_bought_sym1 + abs_buy_entry_fee + trading_buying_reserve)
+    reserve_balance[all_exchanges.index(buying_exchange)] += trading_buying_reserve
 
     # YOU DO NOT DECREASE THE REAL BALANCE WHEN YOU SELL CRYPTO (Margin trade). Margin balance really needed?
     real_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
-    real_balance[all_exchanges.index(selling_exchange)] -= trading_selling_fees
-    fees_balance[all_exchanges.index(selling_exchange)] += trading_selling_fees
+    real_balance[all_exchanges.index(selling_exchange)] -= (abs_sell_entry_fee + trading_selling_reserve)
+    reserve_balance[all_exchanges.index(selling_exchange)] += trading_selling_reserve
     #margin_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
 
     # if trade sucessful:
@@ -137,15 +148,18 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
         buying_exchange,
         ask_price,
         amount_bought_sym1,
-        trading_buying_fees,
+        abs_buy_entry_fee,
+        trading_buying_reserve,
         selling_exchange,
         bid_price,
         amount_sold_sym1,
-        trading_selling_fees
+        abs_sell_entry_fee,
+        trading_selling_reserve,
+        0
     )
 
     file_manag.updt_balance_files(
-        all_exchanges, real_balance, margin_balance, fees_balance
+        all_exchanges, real_balance, margin_balance, reserve_balance
     )
 
 
@@ -158,18 +172,27 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_bought_symbol1(amount_bought_sym1)
 
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_buying_exchange(trading_buying_fees)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_buying_exchange(trading_buying_reserve)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_selling_exchange(selling_exchange)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_sold_symbol1(amount_sold_sym1)
 
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_fees)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_reserve)
 
     opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_traded_sym2)
 
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_opportunity_spread(spread)
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_entry_spread(spread)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_abs_buy_entry_fee(abs_buy_entry_fee)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_abs_sell_entry_fee(abs_sell_entry_fee)
+
+    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_exit_spread(
+        spread - SPREAD_TARGET - 2 * (perc_selling_fee + perc_buying_fee)
+    )
    
+
         # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
 
@@ -181,25 +204,38 @@ def close_trade(pair, asks_list, bids_list, symbol, spread):
 
     loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
 
+    nsymbol = symbols.index(symbol)
+    npair = exchange_pairs.index(pair)
+
     # find where to buy, where to sell and how much of symbol2 is going to be sold/bought
-    buy_on_exchange = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_selling_exchange()
-    sell_on_exchange = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_buying_exchange()
+    buy_on_exchange = opened_trades[nsymbol][npair].get_selling_exchange()
+    sell_on_exchange = opened_trades[nsymbol][npair].get_buying_exchange()
 
-    amount_traded_symbol2 = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_amount_traded_symbol2()
+    amount_traded_symbol2 = opened_trades[nsymbol][npair].get_amount_traded_symbol2()
 
-    trading_buying_fees = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_fee_reserved_selling_exchange()
-    trading_selling_fees = opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_fee_reserved_buying_exchange()
+    trading_buying_reserve = opened_trades[nsymbol][npair].get_fee_reserved_selling_exchange()
+    trading_selling_reserve = opened_trades[nsymbol][npair].get_fee_reserved_buying_exchange()
 
     # sell the buying one and buy the selling one according to the ask/bid list
-    ask_price = asks_list[symbols.index(symbol)][all_exchanges.index(buy_on_exchange)]
-    bid_price = bids_list[symbols.index(symbol)][all_exchanges.index(sell_on_exchange)]
+    ask_price = asks_list[nsymbol][all_exchanges.index(buy_on_exchange)]
+    bid_price = bids_list[nsymbol][all_exchanges.index(sell_on_exchange)]
 
         # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
     amount_bought_sym1 = ask_price * amount_traded_symbol2
     amount_sold_sym1 = bid_price * amount_traded_symbol2
 
+    # Calculates the absolute fee paid on each exchange
+    perc_buying_fee = exchanges_fees[all_exchanges.index(buy_on_exchange)] # % of fees buying exchange
+    perc_selling_fee = exchanges_fees[all_exchanges.index(sell_on_exchange)] # % of fees selling exchange
+
+    abs_buying_fee_sym1 = amount_bought_sym1 * perc_buying_fee
+    abs_selling_fee_sym1 = amount_sold_sym1 * perc_selling_fee
+
+    # Round to 2 decimals
     amount_bought_sym1 = round(amount_bought_sym1, 2)
     amount_sold_sym1 = round(amount_sold_sym1, 2)
+    abs_buying_fee_sym1 = round(abs_buying_fee_sym1, 2)
+    abs_selling_fee_sym1 = round(abs_selling_fee_sym1, 2)
 
     trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
     trade_mod.sell_token(sell_on_exchange, amount_sold_sym1, symbol)
@@ -207,12 +243,17 @@ def close_trade(pair, asks_list, bids_list, symbol, spread):
     # Update the balances
 
     real_balance[all_exchanges.index(buy_on_exchange)] -= amount_bought_sym1 # Close short selling operation (Margin trade)
-    fees_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_fees
-    real_balance[all_exchanges.index(buy_on_exchange)] += trading_buying_fees
+    reserve_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_reserve
+    trading_buying_reserve -= abs_buying_fee_sym1
+    real_balance[all_exchanges.index(buy_on_exchange)] += trading_buying_reserve
 
     real_balance[all_exchanges.index(sell_on_exchange)] += amount_sold_sym1
-    fees_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_fees
-    real_balance[all_exchanges.index(sell_on_exchange)] += trading_selling_fees
+    reserve_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_reserve
+    trading_selling_reserve -= abs_selling_fee_sym1
+    real_balance[all_exchanges.index(sell_on_exchange)] += trading_selling_reserve
+
+    total_fees = opened_trades[nsymbol][npair].get_abs_buy_entry_fee() + opened_trades[nsymbol][npair].get_abs_sell_entry_fee() + abs_buying_fee_sym1 + abs_selling_fee_sym1
+    total_profit = (opened_trades[nsymbol][npair].get_amount_sold_symbol1() - opened_trades[nsymbol][npair].get_amount_bought_symbol1()) + (amount_sold_sym1 - amount_bought_sym1) - total_fees
 
     # register the trade
         # if trade sucessful:
@@ -224,25 +265,28 @@ def close_trade(pair, asks_list, bids_list, symbol, spread):
         buy_on_exchange,
         ask_price,
         amount_bought_sym1,
+        abs_buying_fee_sym1,
         0,  # reserved_buying_fees
         sell_on_exchange,
         bid_price,
         amount_sold_sym1,
+        abs_selling_fee_sym1,
         0,  # reserved_selling_fees
+        total_profit
     )
 
     file_manag.updt_balance_files(
-        all_exchanges, real_balance, margin_balance, fees_balance
+        all_exchanges, real_balance, margin_balance, reserve_balance
     )
 
     #update the opened trades
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(False)
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)] = TradeData(pair)
+    opened_trades[nsymbol][npair].set_is_trade_open(False)
+    opened_trades[nsymbol][npair] = TradeData(pair)
     # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
 
     # Zero max/min spread and trailing data
-    pairs_data[symbols.index(symbol)][exchange_pairs.index(pair)] = PairData(pair)
+    pairs_data[nsymbol][npair] = PairData(pair)
 
     pass
 
@@ -256,7 +300,7 @@ def close_all_opened_trades(asks_list, bids_list, pairs_data_list):
 
 
 def init():
-    global real_balance, margin_balance, fees_balance, opened_trades, loggerln, logger, is_online, pairs_data
+    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_data
     
 
     if not file_manag.file_exists(LOG_FILE_NAME):
@@ -275,7 +319,7 @@ def init():
     for i in range(len(all_exchanges)):
         real_balance[i] = float(temp_dict["real_balance"][all_exchanges[i]])
         margin_balance[i] = float(temp_dict["margin_balance"][all_exchanges[i]])
-        fees_balance[i] = float(temp_dict["fees_balance"][all_exchanges[i]])
+        reserve_balance[i] = float(temp_dict["reserve_balance"][all_exchanges[i]])
 
 
     file_name = 'tradesData.bin'
@@ -307,6 +351,7 @@ def init():
 symbols = ["BTC/USD", "ETH/USD"]
 # Exchanges to trade
 all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
+exchanges_fees = [0.25/100, 0.25/100, 0.25/100, 0.25/100]
 # Holds whether an exchange fetch was not successful
 is_online = []
 # All possible trading Pairs:
@@ -322,12 +367,13 @@ pairs_data = []
 # current_pairs_spread = [[], []]
 
 # Trailing is the percentage from the max to trade
-# MIN_MARGIN = 0.8 / 100
+# TRIGGER_SPREAD = 1/100
+# SPREAD_TARGET = 0.5/100
 # TRAILING_STOP = 0.8
-# SPREAD_TO_CLOSE_TRADE = 0.0/100
-MIN_MARGIN = 0.2 / 100
+
+TRIGGER_SPREAD = 0.2/100
+SPREAD_TARGET = -2/100
 TRAILING_STOP = 0.99
-SPREAD_TO_CLOSE_TRADE = 0 /100
 
 
 # FIX ME: balances NOT USED
@@ -335,9 +381,9 @@ SPREAD_TO_CLOSE_TRADE = 0 /100
 real_balance = [0 for x in range(len(all_exchanges))]
 margin_balance = [0 for x in range(len(all_exchanges))]
 # Amount reserved to pay for fees
-fees_balance = [0 for x in range(len(all_exchanges))]
+reserve_balance = [0 for x in range(len(all_exchanges))]
 # Percentage of the trade reserved for fees.
-FEES_FACTOR = 0.1
+FEES_FACTOR = 5/100
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
 # Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
@@ -361,7 +407,7 @@ if __name__ == "__main__":
 
     print(f"real_balance = {real_balance}")
     print(f"margin_balance = {margin_balance}")
-    print(f"fees_balance = {fees_balance}")
+    print(f"reserve_balance = {reserve_balance}")
     print(" ")
 
     # Counter used to know that the code is still running from the python terminal
@@ -369,7 +415,7 @@ if __name__ == "__main__":
 
     loggerln.info(f"real_balance = {real_balance}")
     loggerln.info(f"margin_balance = {margin_balance}")
-    loggerln.info(f"fees_balance = {fees_balance}")
+    loggerln.info(f"reserve_balance = {reserve_balance}")
     loggerln.info(" ")
 
 
@@ -476,12 +522,12 @@ if __name__ == "__main__":
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (pairs_data[nSym][nPair].get_curr_spread() >= MIN_MARGIN)
+                    (pairs_data[nSym][nPair].get_curr_spread() >= TRIGGER_SPREAD)
                     and (
                         pairs_data[nSym][nPair].get_curr_spread() <= pairs_data[nSym][nPair].get_curr_trailing()
                     )
                     and (
-                        not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open()
+                        not opened_trades[nSym][nPair].get_is_trade_open()
                     )
                 ):
 
@@ -505,7 +551,7 @@ if __name__ == "__main__":
 
                     loggerln.info("")
 
-                elif opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
+                elif opened_trades[nSym][nPair].get_is_trade_open():
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
@@ -518,12 +564,16 @@ if __name__ == "__main__":
                         ),
                     )
 
-                    if (pairs_data[nSym][nPair].get_curr_spread() <= SPREAD_TO_CLOSE_TRADE):
+                    if (pairs_data[nSym][nPair].get_curr_spread() <= opened_trades[nSym][nPair].get_exit_spread()):
                         close_trade(pair, asks, bids, symbols[nSym], pairs_data[nSym][nPair].get_curr_spread())
                         #rlogger.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
-                        loggerln.info("Opportunity Spread = {:.2%}".format(opened_trades[nSym][exchange_pairs.index(pair)].get_opportunity_spread()))
+                        loggerln.info("Entry Spread = {:.2%} - Exit Spread = {:.2%}".format(
+                            opened_trades[nSym][nPair].get_entry_spread(),
+                            opened_trades[nSym][nPair].get_exit_spread(),
+                            )
+                        )
 
 
                 else:
