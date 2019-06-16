@@ -21,17 +21,27 @@ qtd de crypto do trade, se esta entrando ou saindo do trade, colocar spread de e
 and the one registered whenever closing trade. Fixed - ok
 -Deal with the timeout errors - ok
 -Correcting the spread calculation bugged the code for find the highest spread pair - Fixed - ok
-
--Fixed a bug when a calculating minimum Spread
-
-
--Change the way you deaal with PairData
-    -Verify the spread for each oppotunity
-    -test trades,
-    -close all trades file
-    -stop trading file
+-Fixed a bug when a calculating minimum Spread - ok
+-Change the way you deaal with PairData - ok
 
 
+
+    "Timestamp",
+    "Trading Symbol",
+    "Opening/Closing",
+    "Spread",
+    "Amount Sym 2",
+    "Bought On",
+    "Ask Price (Sym 1)",
+    "Total Spent Sym 1",
+    "Total Buying Fees",
+    "Res. Buying Reserve",
+    "Sold On",
+    "Bid Price (Sym 1)",
+    "Total Sold Sym 1",
+    "Total Selling Fees"
+    "Res. Selling Reserve",
+    "Opportunity Profit",
 
 -Note: the cash used for a trade will be the minimum of the two exchanges, minus 1.00% as a small margin: 
 if there is $1,000 on the first account and $1,100 on the second one, $990 will be used for each exchange, i.e. $1,000 - (1% * $1,000). The exposure is $1,980

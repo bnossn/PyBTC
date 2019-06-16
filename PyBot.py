@@ -22,7 +22,7 @@ async def async_client(exchange):
         client = getattr(ccxta, exchange)(
             {"enableRateLimit": True}  # required accoding to the Manual
         )
-        await client.load_markets()
+        await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
         for i in range(len(symbols)):
 
             if symbols[i] not in client.symbols:
@@ -348,9 +348,12 @@ def init():
 
 
 # Pairs to trade
-symbols = ["BTC/USD", "ETH/USD"]
+# symbols = ["BTC/USD", "ETH/USD", "BCH/USD", "LTC/USD", "XLM/USD", "XRP/USD", "ZEC/USD"] # With margin Trade
+symbols = ["ETH/USDT", "EOS/USDT", "XRP/USDT", ] #Without Margin trade (Transfering currencies) 
+#symbols = ["BTC/USD", "ETH/USD"]
 # Exchanges to trade
-all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
+#all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
+all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"]
 exchanges_fees = [0.25/100, 0.25/100, 0.25/100, 0.25/100]
 # Holds whether an exchange fetch was not successful
 is_online = []
@@ -367,13 +370,13 @@ pairs_data = []
 # current_pairs_spread = [[], []]
 
 # Trailing is the percentage from the max to trade
-# TRIGGER_SPREAD = 1/100
-# SPREAD_TARGET = 0.5/100
-# TRAILING_STOP = 0.8
+TRIGGER_SPREAD = 1/100
+SPREAD_TARGET = 0.5/100
+TRAILING_STOP = 0.9
 
-TRIGGER_SPREAD = 0.2/100
-SPREAD_TARGET = -2/100
-TRAILING_STOP = 0.99
+# TRIGGER_SPREAD = 0.2/100
+# SPREAD_TARGET = -2/100
+# TRAILING_STOP = 0.99
 
 
 # FIX ME: balances NOT USED
@@ -387,7 +390,7 @@ FEES_FACTOR = 5/100
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
 # Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
-TRADING_AMOUNT = 5000
+TRADING_AMOUNT = 2500
 
 FILE_STOP_TRADING = "stoptrading.txt"
 FILE_CLOSE_ALL_TRADES = "closetrades.txt"
@@ -465,7 +468,7 @@ if __name__ == "__main__":
                 
                 # Check if any of the two exchanges are offline and do nothing if so
                 if (not is_online[all_exchanges.index(pair[0])]) or (not is_online[all_exchanges.index(pair[1])]):
-                    logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
+                    logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:2], pair[1][:2]))
                     logger.info(" - {} = ".format(pair[0], ))
                     logger.info("Online") if is_online[all_exchanges.index(pair[0])] else logger.info("Offline")
                     logger.info(" / {} = ".format(pair[1], ))
@@ -533,8 +536,8 @@ if __name__ == "__main__":
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:3],
-                            temp_exc_sell[:3],
+                            temp_exc_buy[:2],
+                            temp_exc_sell[:2],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread() ,
                             pairs_data[nSym][nPair].get_curr_spread(),
@@ -555,8 +558,8 @@ if __name__ == "__main__":
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:3],
-                            temp_exc_sell[:3],
+                            temp_exc_buy[:2],
+                            temp_exc_sell[:2],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread(),
                             pairs_data[nSym][nPair].get_curr_spread(),
@@ -580,8 +583,8 @@ if __name__ == "__main__":
 
                     loggerln.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:3],
-                            temp_exc_sell[:3],
+                            temp_exc_buy[:2],
+                            temp_exc_sell[:2],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread(),
                             pairs_data[nSym][nPair].get_curr_spread(),

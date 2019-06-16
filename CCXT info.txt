@@ -1,0 +1,17 @@
+ exchange properties
+
+ has:
+    'createDepositAddress': false,
+    'deposit': false,
+    'fetchDepositAddress': false,
+    'withdraw': false,
+    
+
+
+The user should check if the market is active and reload market cache periodically, as explained below.
+
+Take care of each currency Precision And Limits (amount and price for both) when placing an order
+   -This does not influence most of the orders but can be significant in extreme cases of very large or very small orders
+   -The user is required to stay within all limits and precision! The values of the order should satisfy the following conditions (look on manual):
+   -A negative amount precision means that the amount should be an integer multiple of 10 (to the absolute power specified) (market['precision']['amount'] == -1). decimal_to_precision() can handle that
+   -decimalToPrecision fuction can be used. (There are code examples in the folder)
