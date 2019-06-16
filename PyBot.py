@@ -353,7 +353,8 @@ symbols = ["ETH/USDT", "EOS/USDT", "XRP/USDT", ] #Without Margin trade (Transfer
 #symbols = ["BTC/USD", "ETH/USD"]
 # Exchanges to trade
 #all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
-all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"]
+# all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"] # USDT
+all_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"] #USD
 exchanges_fees = [0.25/100, 0.25/100, 0.25/100, 0.25/100]
 # Holds whether an exchange fetch was not successful
 is_online = []
