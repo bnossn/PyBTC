@@ -26,9 +26,10 @@ async def async_client(exchange):
         for i in range(len(symbols)):
 
             if symbols[i] not in client.symbols:
-                raise Exception(exchange + " does not support symbol " + symbols[i])
-
-            tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+                tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
+                # raise Exception(exchange + " does not support symbol " + symbols[i])
+            else:
+                tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
 
         return tickers
     finally:
@@ -349,13 +350,17 @@ def init():
 
 # Pairs to trade
 # symbols = ["BTC/USD", "ETH/USD", "BCH/USD", "LTC/USD", "XLM/USD", "XRP/USD", "ZEC/USD"] # With margin Trade
-symbols = ["ETH/USDT", "EOS/USDT", "XRP/USDT", ] #Without Margin trade (Transfering currencies) 
+symbols = ["ETH/USD", "EOS/USD", "XRP/USD", ] #Without Margin trade (Transfering currencies) 
+symbolsT = ["ETH/USDT", "EOS/USDT", "XRP/USDT", ] #Without Margin trade (Transfering currencies) 
 #symbols = ["BTC/USD", "ETH/USD"]
 # Exchanges to trade
 #all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
 # all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"] # USDT
-all_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"] #USD
-exchanges_fees = [0.25/100, 0.25/100, 0.25/100, 0.25/100]
+# all_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"] #USD
+usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"]
+usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
+all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro"]
+exchanges_fees = [0.25/100 for i in range(len(all_exchanges))]
 # Holds whether an exchange fetch was not successful
 is_online = []
 # All possible trading Pairs:
@@ -449,8 +454,12 @@ if __name__ == "__main__":
         for nSym in range(len(symbols)):
             for index, exchange in enumerate(a1):
                 if is_online[index]:
-                    bids[nSym][index] = exchange[symbols[nSym]]["bids"][0][0]
-                    asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
+                    if all_exchanges[index] in usd_exchanges:
+                        bids[nSym][index] = exchange[symbols[nSym]]["bids"][0][0]
+                        asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
+                    else:
+                        bids[nSym][index] = exchange[symbolsT[nSym]]["bids"][0][0]
+                        asks[nSym][index] = exchange[symbolsT[nSym]]["asks"][0][0]
         # !!! \Take Bids/Asks
 
         loggerln.info(f"bids: {bids}")
@@ -469,7 +478,7 @@ if __name__ == "__main__":
                 
                 # Check if any of the two exchanges are offline and do nothing if so
                 if (not is_online[all_exchanges.index(pair[0])]) or (not is_online[all_exchanges.index(pair[1])]):
-                    logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:2], pair[1][:2]))
+                    logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
                     logger.info(" - {} = ".format(pair[0], ))
                     logger.info("Online") if is_online[all_exchanges.index(pair[0])] else logger.info("Offline")
                     logger.info(" / {} = ".format(pair[1], ))
@@ -537,8 +546,8 @@ if __name__ == "__main__":
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:2],
-                            temp_exc_sell[:2],
+                            temp_exc_buy[:3],
+                            temp_exc_sell[:3],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread() ,
                             pairs_data[nSym][nPair].get_curr_spread(),
@@ -559,8 +568,8 @@ if __name__ == "__main__":
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:2],
-                            temp_exc_sell[:2],
+                            temp_exc_buy[:3],
+                            temp_exc_sell[:3],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread(),
                             pairs_data[nSym][nPair].get_curr_spread(),
@@ -584,8 +593,8 @@ if __name__ == "__main__":
 
                     loggerln.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
-                            temp_exc_buy[:2],
-                            temp_exc_sell[:2],
+                            temp_exc_buy[:3],
+                            temp_exc_sell[:3],
                             pairs_data[nSym][nPair].get_max_spread(),
                             pairs_data[nSym][nPair].get_min_spread(),
                             pairs_data[nSym][nPair].get_curr_spread(),
