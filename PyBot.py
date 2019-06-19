@@ -348,7 +348,8 @@ def init():
 
 
 # Pairs to trade
-symbols = ["BTC/USD", "ETH/USD"]
+# symbols = ["BTC/USD", "ETH/USD"]
+symbols = ["BTC/USD", "ETH/USD", "BCH/USD", "XRP/USD"]
 # Exchanges to trade
 all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
 exchanges_fees = [0.25/100, 0.25/100, 0.25/100, 0.25/100]
@@ -367,13 +368,13 @@ pairs_data = []
 # current_pairs_spread = [[], []]
 
 # Trailing is the percentage from the max to trade
-# TRIGGER_SPREAD = 1/100
-# SPREAD_TARGET = 0.5/100
-# TRAILING_STOP = 0.8
+TRIGGER_SPREAD = 0.8/100
+SPREAD_TARGET = 0.5/100
+TRAILING_STOP = 0.9
 
-TRIGGER_SPREAD = 0.2/100
-SPREAD_TARGET = -2/100
-TRAILING_STOP = 0.99
+# TRIGGER_SPREAD = 0.2/100
+# SPREAD_TARGET = -2/100
+# TRAILING_STOP = 0.99
 
 
 # FIX ME: balances NOT USED
