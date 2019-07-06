@@ -23,43 +23,39 @@ and the one registered whenever closing trade. Fixed - ok
 -Correcting the spread calculation bugged the code for find the highest spread pair - Fixed - ok
 -Fixed a bug when a calculating minimum Spread - ok
 -Change the way you deaal with PairData - ok
+-Create a SpreadTarget that takes into account the fees. SpreadTarget = The targeted profit - ok
 
 
 
-    "Timestamp",
-    "Trading Symbol",
-    "Opening/Closing",
-    "Spread",
-    "Amount Sym 2",
-    "Bought On",
-    "Ask Price (Sym 1)",
-    "Total Spent Sym 1",
-    "Total Buying Fees",
-    "Res. Buying Reserve",
-    "Sold On",
-    "Bid Price (Sym 1)",
-    "Total Sold Sym 1",
-    "Total Selling Fees"
-    "Res. Selling Reserve",
-    "Opportunity Profit",
 
--Note: the cash used for a trade will be the minimum of the two exchanges, minus 1.00% as a small margin: 
-if there is $1,000 on the first account and $1,100 on the second one, $990 will be used for each exchange, i.e. $1,000 - (1% * $1,000). The exposure is $1,980
-
--Create a SpreadTarget that takes into account the fees. SpreadTarget = The targeted profit
-If SpreadEntry is at 0.80% and trades are generated at that level on two exchanges with 0.25% fees each, Blackbird will set the exit threshold at -0.70% (0.80% spread entry - 4x0.25% fees - 0.50% target = -0.70%)
-res.exitTarget = res.spreadIn - params.spreadTarget - 2.0*(res.feesLong + res.feesShort);
-Use checkEntry / checkExit Functions?
-
--Add trailling for closing a trade as well. (Opposite to that for openning the trade)
-
--Do the exchange commands time management manually
+-Do the exchange commands time management manually. Needed?
 
 -Fix the ordering of the args of the functions open_trade and close_trade
 
--You cannot use the money from short selling to enter another trade =O. Better use margin balance to avoid that
 
 
 -Use the unsync library to do multiprocessing, multithreading and asyncIO all at once.
 
 -Script so considera o valor da melhor oferta sem considerar volume
+
+
+-Instantiate all the ccxt objects (exchanges) outside the async function and pass it to the async as parameter. Does this handle Rate Limit better?
+What about the .close()?
+
+-Orders are cached - call purgeCachedOrders(before) from time to time to clean it
+
+
+
+-Cast exchanges globally - ok
+-Create exchange pair between buying and selling exchanges - ok
+
+-Create a bool for SimMode
+-Separate exchange in two list: The ones you can buy (withdraw) and the ones you can sell (Deposit)
+-Create a timedelay to simulate transaction time
+-Compute price based on the trading volume (Average of the price for 3 times the volume your are considering buying)
+-Set Minimum withdraw for each crypto
+-Break the loop for finding opportunity as soon as the first opportunity is found (With break). Do the fetch_order_book again before openning a new position.
+-Count a min number of loops that an opportunity is available before openning a position (e.g. 2 times)
+- Find a safe way to read the API key
+
+

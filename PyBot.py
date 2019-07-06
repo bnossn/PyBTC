@@ -18,22 +18,17 @@ sys.path.append(root + "/python")
 async def async_client(exchange):
     tickers = {}
     try:
-        # client = getattr(ccxta, exchange)()
-        client = getattr(ccxta, exchange)(
-            {"enableRateLimit": True}  # required accoding to the Manual
-        )
-        await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
+        await exchange.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
         for i in range(len(symbols)):
 
-            if symbols[i] not in client.symbols:
-                tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
-                # raise Exception(exchange + " does not support symbol " + symbols[i])
+            if symbols[i] not in exchange.symbols:
+                tickers[symbolsT[i]] = await exchange.fetch_l2_order_book(symbolsT[i], 100)
             else:
-                tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+                tickers[symbols[i]] = await exchange.fetch_l2_order_book(symbols[i], 100)
 
         return tickers
     finally:
-        await client.close()
+        await exchange.close()
 
 
 async def multi_orderbooks(exchanges):
@@ -42,11 +37,12 @@ async def multi_orderbooks(exchanges):
     return tickers
 
 
-def list_unique_pairs(source):
+def list_unique_pairs(source1, source2):
     result = []
-    for p1 in range(len(source)):
-        for p2 in range(p1 + 1, len(source)):
-            result.append([source[p1], source[p2]])
+    for p1 in range(len(source1)):
+        for p2 in range(len(source2)):
+            if ([source2[p2], source1[p1]] not in result) and (source1[p1] != source2[p2]): #remove duplicates
+                result.append([source1[p1], source2[p2]])
     return result
 
 
@@ -54,8 +50,8 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     global opened_trades
 
     # garantees that the exchange has at least the MIN_TRADE_AMOUNT avaiable for trading
-    if (real_balance[all_exchanges.index(buying_exchange)] < MIN_TRADE_AMOUNT) or (
-        real_balance[all_exchanges.index(selling_exchange)] < MIN_TRADE_AMOUNT
+    if (real_balance[buying_exchange] < MIN_TRADE_AMOUNT) or (
+        real_balance[selling_exchange] < MIN_TRADE_AMOUNT
     ):
         loggerln.info(
             f"Insuficient amount available in either exchange! {buying_exchange} or {selling_exchange}"
@@ -65,14 +61,14 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 
     # Find out how much usd you are going to spend on the trade
     # Amount bought sym1 means that it was bought x dollars worth of sym2
-    if real_balance[all_exchanges.index(buying_exchange)] > TRADING_AMOUNT:
+    if real_balance[buying_exchange] > TRADING_AMOUNT:
         amount_bought_sym1 = TRADING_AMOUNT
     else:
-        amount_bought_sym1 = real_balance[all_exchanges.index(buying_exchange)]
-    if real_balance[all_exchanges.index(selling_exchange)] > TRADING_AMOUNT:
+        amount_bought_sym1 = real_balance[buying_exchange]
+    if real_balance[selling_exchange] > TRADING_AMOUNT:
         amount_sold_sym1 = TRADING_AMOUNT
     else:
-        amount_sold_sym1 = real_balance[all_exchanges.index(selling_exchange)]
+        amount_sold_sym1 = real_balance[selling_exchange]
 
 
     trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR # garantees you`re going to have money for fees (updated later)
@@ -103,19 +99,19 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
 
 
     # Calculates the absolute fee paid on each exchange
-    perc_buying_fee = exchanges_fees[all_exchanges.index(buying_exchange)] # % of fees buying exchange
-    perc_selling_fee = exchanges_fees[all_exchanges.index(selling_exchange)] # % of fees selling exchange
+    # perc_buying_fee = exchanges_fees[all_exchanges.index(buying_exchange)] # % of fees buying exchange
+    # perc_selling_fee = exchanges_fees[all_exchanges.index(selling_exchange)] # % of fees selling exchange
 
-    abs_buy_entry_fee = amount_bought_sym1 * perc_buying_fee
-    abs_sell_entry_fee = amount_sold_sym1 * perc_selling_fee
+    # abs_buy_entry_fee = amount_bought_sym1 * perc_buying_fee
+    # abs_sell_entry_fee = amount_sold_sym1 * perc_selling_fee
 
     # update the reserve amount to avoid to much fee reserved on either exchange.
     trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR
     trading_selling_reserve = amount_sold_sym1 * FEES_FACTOR
 
     # decrease the fee paid from the reserve
-    trading_buying_reserve -= abs_buy_entry_fee
-    trading_selling_reserve -= abs_sell_entry_fee
+    # trading_buying_reserve -= abs_buy_entry_fee
+    # trading_selling_reserve -= abs_sell_entry_fee
 
     # Round all amounts here before trading (Try to avoid float point hardware approximation)
     amount_bought_sym1 = round(amount_bought_sym1, 2)
@@ -130,13 +126,13 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
     trade_mod.sell_token(selling_exchange, amount_sold_sym1, symbol) # Short sell
 
     # Update Balances
-    real_balance[all_exchanges.index(buying_exchange)] -= (amount_bought_sym1 + abs_buy_entry_fee + trading_buying_reserve)
-    reserve_balance[all_exchanges.index(buying_exchange)] += trading_buying_reserve
+    real_balance[buying_exchange] -= (amount_bought_sym1 + abs_buy_entry_fee + trading_buying_reserve)
+    # reserve_balance[all_exchanges.index(buying_exchange)] += trading_buying_reserve
 
     # YOU DO NOT DECREASE THE REAL BALANCE WHEN YOU SELL CRYPTO (Margin trade). Margin balance really needed?
-    real_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
-    real_balance[all_exchanges.index(selling_exchange)] -= (abs_sell_entry_fee + trading_selling_reserve)
-    reserve_balance[all_exchanges.index(selling_exchange)] += trading_selling_reserve
+    real_balance[selling_exchange] += amount_sold_sym1
+    real_balance[selling_exchange] -= (abs_sell_entry_fee + trading_selling_reserve)
+    # reserve_balance[all_exchanges.index(selling_exchange)] += trading_selling_reserve
     #margin_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
 
     # if trade sucessful:
@@ -226,32 +222,32 @@ def close_trade(pair, asks_list, bids_list, symbol, spread):
     amount_sold_sym1 = bid_price * amount_traded_symbol2
 
     # Calculates the absolute fee paid on each exchange
-    perc_buying_fee = exchanges_fees[all_exchanges.index(buy_on_exchange)] # % of fees buying exchange
-    perc_selling_fee = exchanges_fees[all_exchanges.index(sell_on_exchange)] # % of fees selling exchange
+    # perc_buying_fee = exchanges_fees[all_exchanges.index(buy_on_exchange)] # % of fees buying exchange
+    # perc_selling_fee = exchanges_fees[all_exchanges.index(sell_on_exchange)] # % of fees selling exchange
 
-    abs_buying_fee_sym1 = amount_bought_sym1 * perc_buying_fee
-    abs_selling_fee_sym1 = amount_sold_sym1 * perc_selling_fee
+    # abs_buying_fee_sym1 = amount_bought_sym1 * perc_buying_fee
+    # abs_selling_fee_sym1 = amount_sold_sym1 * perc_selling_fee
 
     # Round to 2 decimals
     amount_bought_sym1 = round(amount_bought_sym1, 2)
     amount_sold_sym1 = round(amount_sold_sym1, 2)
-    abs_buying_fee_sym1 = round(abs_buying_fee_sym1, 2)
-    abs_selling_fee_sym1 = round(abs_selling_fee_sym1, 2)
+    # abs_buying_fee_sym1 = round(abs_buying_fee_sym1, 2)
+    # abs_selling_fee_sym1 = round(abs_selling_fee_sym1, 2)
 
     trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
     trade_mod.sell_token(sell_on_exchange, amount_sold_sym1, symbol)
 
     # Update the balances
 
-    real_balance[all_exchanges.index(buy_on_exchange)] -= amount_bought_sym1 # Close short selling operation (Margin trade)
-    reserve_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_reserve
+    real_balance[buy_on_exchange] -= amount_bought_sym1 # Close short selling operation (Margin trade)
+    # reserve_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_reserve
     trading_buying_reserve -= abs_buying_fee_sym1
-    real_balance[all_exchanges.index(buy_on_exchange)] += trading_buying_reserve
+    real_balance[buy_on_exchange] += trading_buying_reserve
 
-    real_balance[all_exchanges.index(sell_on_exchange)] += amount_sold_sym1
-    reserve_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_reserve
+    real_balance[sell_on_exchange] += amount_sold_sym1
+    # reserve_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_reserve
     trading_selling_reserve -= abs_selling_fee_sym1
-    real_balance[all_exchanges.index(sell_on_exchange)] += trading_selling_reserve
+    real_balance[sell_on_exchange] += trading_selling_reserve
 
     total_fees = opened_trades[nsymbol][npair].get_abs_buy_entry_fee() + opened_trades[nsymbol][npair].get_abs_sell_entry_fee() + abs_buying_fee_sym1 + abs_selling_fee_sym1
     total_profit = (opened_trades[nsymbol][npair].get_amount_sold_symbol1() - opened_trades[nsymbol][npair].get_amount_bought_symbol1()) + (amount_sold_sym1 - amount_bought_sym1) - total_fees
@@ -301,8 +297,29 @@ def close_all_opened_trades(asks_list, bids_list, pairs_data_list):
 
 
 def init():
-    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_data
+    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_data, all_exchanges, exchange_pairs
     
+
+    all_exchanges.extend(can_buy_exchanges)
+    all_exchanges.extend(can_sell_exchanges)
+    all_exchanges = list(set(all_exchanges)) #Transform it into a list of unique values
+    all_exchanges.sort() # Sets are ordered randomly. This line garantees the order is always kept.
+
+
+    exchange_pairs = list_unique_pairs(can_buy_exchanges, can_sell_exchanges)
+
+
+    for exchange in all_exchanges:
+        real_balance[exchange] = 0
+
+        is_online[exchange] = False
+
+        exch_obj = getattr(ccxta, exchange)(
+            {"enableRateLimit": True}  # required accoding to the Manual
+        )
+        exchanges_obj.append(exch_obj)
+
+
 
     if not file_manag.file_exists(LOG_FILE_NAME):
         file_manag.create_file(LOG_FILE_NAME)
@@ -317,10 +334,9 @@ def init():
 
 
     temp_dict = file_manag.fetch_stored_balances()
-    for i in range(len(all_exchanges)):
-        real_balance[i] = float(temp_dict["real_balance"][all_exchanges[i]])
-        margin_balance[i] = float(temp_dict["margin_balance"][all_exchanges[i]])
-        reserve_balance[i] = float(temp_dict["reserve_balance"][all_exchanges[i]])
+    for key in temp_dict["real_balance"]:
+        if key in real_balance:
+            real_balance[key] = float(temp_dict["real_balance"][key])
 
 
     file_name = 'tradesData.bin'
@@ -342,61 +358,48 @@ def init():
             for y in range(len(symbols))
         ]
 
-
-    is_online = [False for i in range(len(all_exchanges))]
-
     pass
 
 
-# Pairs to trade
-# symbols = ["BTC/USD", "ETH/USD", "BCH/USD", "LTC/USD", "XLM/USD", "XRP/USD", "ZEC/USD"] # With margin Trade
-symbols = ["ETH/USD", "EOS/USD", "XRP/USD", ] #Without Margin trade (Transfering currencies) 
-symbolsT = ["ETH/USDT", "EOS/USDT", "XRP/USDT", ] #Without Margin trade (Transfering currencies) 
-#symbols = ["BTC/USD", "ETH/USD"]
-# Exchanges to trade
-#all_exchanges = ["bitfinex", "kraken", "okcoinusd", "cex"]
-# all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"] # USDT
-# all_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"] #USD
-usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin"]
-usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
-all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro"]
-exchanges_fees = [0.25/100 for i in range(len(all_exchanges))]
-# Holds whether an exchange fetch was not successful
-is_online = []
-# All possible trading Pairs:
-exchange_pairs = list_unique_pairs(all_exchanges)
-# Usado  para gravar os TradeData e para garantir que o bot não entrará na mesma operação duas vezes.
-opened_trades = []
-#Used mainly to record the spread data of each pair / symbol 
-pairs_data = []
+# exchanges_fees = [0.25/100 for i in range(len(all_exchanges))]
 
-# max_pair_spread = [[], []]
-# min_pair_spread = [[], []]
-# current_pair_trailing = [[], []]
-# current_pairs_spread = [[], []]
+all_exchanges = [] # All registered exchanges (String)
+exchange_pairs = [] # All possible trading Pairs (String)
+exchanges_obj = []  # a placeholder for your instances (ccxta object)
+is_online = {} # Holds whether an exchange fetch was not successful (Boolean)
+opened_trades = [] # Usado  para gravar os TradeData e para garantir que o bot não entrará na mesma operação duas vezes. (TradeData object)
+pairs_data = [] #Used mainly to record the spread data of each pair / symbol (PairData Object)
+
+#Balances:
+real_balance = {}
+# Amount reserved to pay for fees
+# reserve_balance = [0 for x in range(len(all_exchanges))]
+
+
+# Symbols to trade
+symbols = ["ETH/USD", "EOS/USD", "XRP/USD"] #Without Margin trade (Transfering currencies) 
+symbolsT = ["ETH/USDT", "EOS/USDT", "XRP/USDT"] #Without Margin trade (Transfering currencies) 
+
+# Exchanges to trade
+# all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin", "poloniex"]
+usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
+
+can_buy_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+can_sell_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+
 
 # Trailing is the percentage from the max to trade
 TRIGGER_SPREAD = 1/100
 SPREAD_TARGET = 0.5/100
 TRAILING_STOP = 0.9
 
-# TRIGGER_SPREAD = 0.2/100
-# SPREAD_TARGET = -2/100
-# TRAILING_STOP = 0.99
-
-
-# FIX ME: balances NOT USED
-# Trading Accounts - Considers all accounts starts with USD only.
-real_balance = [0 for x in range(len(all_exchanges))]
-margin_balance = [0 for x in range(len(all_exchanges))]
-# Amount reserved to pay for fees
-reserve_balance = [0 for x in range(len(all_exchanges))]
 # Percentage of the trade reserved for fees.
 FEES_FACTOR = 5/100
 # Min amount per trade
 MIN_TRADE_AMOUNT = 50
 # Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
-TRADING_AMOUNT = 2500
+TRADING_AMOUNT = 1000
 
 FILE_STOP_TRADING = "stoptrading.txt"
 FILE_CLOSE_ALL_TRADES = "closetrades.txt"
@@ -415,16 +418,12 @@ if __name__ == "__main__":
     loggerln.info("%d pairings" % len(exchange_pairs))
 
     print(f"real_balance = {real_balance}")
-    print(f"margin_balance = {margin_balance}")
-    print(f"reserve_balance = {reserve_balance}")
     print(" ")
 
     # Counter used to know that the code is still running from the python terminal
     ncounter = 0
 
     loggerln.info(f"real_balance = {real_balance}")
-    loggerln.info(f"margin_balance = {margin_balance}")
-    loggerln.info(f"reserve_balance = {reserve_balance}")
     loggerln.info(" ")
 
 
@@ -440,7 +439,7 @@ if __name__ == "__main__":
         # !!! Fetch data
         tic = time.time()
         loop = asyncio.get_event_loop()
-        a1 = loop.run_until_complete(multi_orderbooks(all_exchanges))
+        a1 = loop.run_until_complete(multi_orderbooks(exchanges_obj))
 
         loggerln.info("async call spend: {:.2f}  -  TimeStamp: {}".format((time.time() - tic), str(file_manag.get_timestamp())))
         # !!! \Fetch data
@@ -448,19 +447,22 @@ if __name__ == "__main__":
 
         # Update the isOnline list according to the returned values/exceptions
         for i in range(len(all_exchanges)):
-            is_online[i] = not isinstance(a1[i], Exception)
+            is_online[all_exchanges[i]] = not isinstance(a1[i], Exception)
 
         # !!! Take Bids/Asks
         for nSym in range(len(symbols)):
-            for index, exchange in enumerate(a1):
-                if is_online[index]:
+            for index, symbol_pairs in enumerate(a1):
+                if is_online[all_exchanges[index]]:
                     if all_exchanges[index] in usd_exchanges:
-                        bids[nSym][index] = exchange[symbols[nSym]]["bids"][0][0]
-                        asks[nSym][index] = exchange[symbols[nSym]]["asks"][0][0]
+                        bids[nSym][index] = symbol_pairs[symbols[nSym]]["bids"][0][0] if len (symbol_pairs[symbols[nSym]]["bids"]) > 0 else None
+                        asks[nSym][index] = symbol_pairs[symbols[nSym]]["asks"][0][0] if len (symbol_pairs[symbols[nSym]]["asks"]) > 0 else None
                     else:
-                        bids[nSym][index] = exchange[symbolsT[nSym]]["bids"][0][0]
-                        asks[nSym][index] = exchange[symbolsT[nSym]]["asks"][0][0]
+                        bids[nSym][index] = symbol_pairs[symbolsT[nSym]]["bids"][0][0] if len (symbol_pairs[symbolsT[nSym]]["bids"]) > 0 else None
+                        asks[nSym][index] = symbol_pairs[symbolsT[nSym]]["asks"][0][0] if len (symbol_pairs[symbolsT[nSym]]["asks"]) > 0 else None
         # !!! \Take Bids/Asks
+
+        print("")
+        sys.exit()
 
         loggerln.info(f"bids: {bids}")
         loggerln.info(f"asks: {asks}")
@@ -477,12 +479,12 @@ if __name__ == "__main__":
             for nPair, pair in enumerate(exchange_pairs):
                 
                 # Check if any of the two exchanges are offline and do nothing if so
-                if (not is_online[all_exchanges.index(pair[0])]) or (not is_online[all_exchanges.index(pair[1])]):
+                if (not is_online[pair[0]]) or (not is_online[pair[1]]):
                     logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
                     logger.info(" - {} = ".format(pair[0], ))
-                    logger.info("Online") if is_online[all_exchanges.index(pair[0])] else logger.info("Offline")
+                    logger.info("Online") if is_online[pair[0]] else logger.info("Offline")
                     logger.info(" / {} = ".format(pair[1], ))
-                    loggerln.info("Online") if is_online[all_exchanges.index(pair[1])] else loggerln.info("Offline")
+                    loggerln.info("Online") if is_online[pair[1]] else loggerln.info("Offline")
                     continue
 
 
