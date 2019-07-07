@@ -63,6 +63,7 @@ What about the .close()?
 
 -If two opportunities sends crpto to the same exchange at the same time, closing trades might be difficult. Maybe the open time recorded can help with that?
 
+-has_bid_liquidity was never used
 
 -OpenTrade / CloseTrade have to return whether the trading was successful.
 

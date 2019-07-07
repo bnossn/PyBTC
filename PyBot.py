@@ -351,6 +351,7 @@ def close_trade(pair, asks, bids, symbol, spread):
     # Zero max/min spread and trailing data
     pairs_spread_data[npair][nsymbol] = PairData(pair)
 
+    return True, "Close was Successful!"
     pass
 
 
