@@ -11,12 +11,11 @@ trading_field_names = [
     "Ask Price (Sym 1)",
     "Total Spent Sym 1",
     "Total Buying Fees",
-    "Res. Buying Reserve",
-    "Sold On",
+    "Selling On",
+    "Amount to be received Sym 2",
     "Bid Price (Sym 1)",
-    "Total Sold Sym 1",
+    "Total Expected Sym 1",
     "Total Selling Fees",
-    "Res. Selling Reserve",
     "Opportunity Profit",
 ]
 
@@ -37,19 +36,19 @@ def init_all_files(all_exchanges):
     ):  # if file was just created, assign initial values
         assign_balance_initial_value(all_exchanges, "real_balance")
 
-    file_name = "./csvFiles/margin_balance.csv"
-    field_name = ["Timestamp"] + all_exchanges
-    if not init_file(
-        file_name, field_name
-    ):  # if file was just created, assign initial values
-        assign_balance_initial_value(all_exchanges, "margin_balance")
+    # file_name = "./csvFiles/margin_balance.csv"
+    # field_name = ["Timestamp"] + all_exchanges
+    # if not init_file(
+    #     file_name, field_name
+    # ):  # if file was just created, assign initial values
+    #     assign_balance_initial_value(all_exchanges, "margin_balance")
 
-    file_name = "./csvFiles/reserve_balance.csv"
-    field_name = ["Timestamp"] + all_exchanges
-    if not init_file(
-        file_name, field_name
-    ):  # if file was just created, assign initial values
-        assign_balance_initial_value(all_exchanges, "reserve_balance")
+    # file_name = "./csvFiles/reserve_balance.csv"
+    # field_name = ["Timestamp"] + all_exchanges
+    # if not init_file(
+    #     file_name, field_name
+    # ):  # if file was just created, assign initial values
+    #     assign_balance_initial_value(all_exchanges, "reserve_balance")
 
 
 def init_file(
@@ -82,12 +81,11 @@ def register_trade(
     ask_price_sym1,
     total_spent_sym1,
     total_buying_fees,
-    reserved_buying,
     sold_on,
+    amount_received_sym2,
     bid_price_sym1,
     total_sold_sym1,
     total_selling_fees,
-    reserved_selling,
     total_profit
 ):
 
@@ -109,24 +107,23 @@ def register_trade(
                 "Ask Price (Sym 1)": ask_price_sym1,
                 "Total Spent Sym 1": total_spent_sym1,
                 "Total Buying Fees": total_buying_fees,
-                "Res. Buying Reserve": reserved_buying,
-                "Sold On": sold_on,
+                "Selling On": sold_on,
+                "Amount to be received Sym 2": amount_received_sym2,
                 "Bid Price (Sym 1)": bid_price_sym1,
-                "Total Sold Sym 1": total_sold_sym1,
+                "Total Expected Sym 1": total_sold_sym1,
                 "Total Selling Fees": total_selling_fees,
-                "Res. Selling Reserve": reserved_selling,
                 "Opportunity Profit": total_profit,
             }
         )
 
 
-def updt_balance_files(all_exchanges, real_balance, margin_balance, reserve_balance):
+def updt_balance_files(all_exchanges, real_balance):
 
     updt_balance_file(all_exchanges, "real_balance", real_balance)
 
-    updt_balance_file(all_exchanges, "margin_balance", margin_balance)
+    # updt_balance_file(all_exchanges, "margin_balance", margin_balance)
 
-    updt_balance_file(all_exchanges, "reserve_balance", reserve_balance)
+    # updt_balance_file(all_exchanges, "reserve_balance", reserve_balance)
 
 
 def updt_balance_file(all_exchanges, balance_type, balance):
@@ -152,7 +149,7 @@ def updt_balance_file(all_exchanges, balance_type, balance):
         temp_dict["Timestamp"] = get_timestamp()
 
         for i in range(len(all_exchanges)):
-            temp_dict[all_exchanges[i]] = balance[i]
+            temp_dict[all_exchanges[i]] = balance[all_exchanges[i]]
 
         csv_writer.writerow(temp_dict)
 
@@ -161,8 +158,8 @@ def fetch_stored_balances():
     temp_dict = {}
 
     temp_dict["real_balance"] = last_row("./csvFiles/real_balance.csv")
-    temp_dict["margin_balance"] = last_row("./csvFiles/margin_balance.csv")
-    temp_dict["reserve_balance"] = last_row("./csvFiles/reserve_balance.csv")
+    # temp_dict["margin_balance"] = last_row("./csvFiles/margin_balance.csv")
+    # temp_dict["reserve_balance"] = last_row("./csvFiles/reserve_balance.csv")
 
     return temp_dict
 

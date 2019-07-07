@@ -4,12 +4,16 @@ import asyncio
 import os
 import sys
 import time
+from collections import defaultdict
 
 import BotLogging
 import trade_mod
 from trade_mod import TradeData, PairData
 import file_management as file_manag
-import ccxt
+# import ccxt
+from ccxt import decimal_to_precision
+from ccxt import TRUNCATE
+from ccxt import DECIMAL_PLACES
 import ccxt.async_support as ccxta  # noqa: E402
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +41,26 @@ async def multi_orderbooks(exchanges):
     return tickers
 
 
+def calc_avg_price(price_table):
+    # False is returned whenever trading amount takes the entire order book
+    # avg_price is returned either way.
+
+    max_trading_cost = TRADING_AMOUNT * SAFE_ORDERBOOK_MULTIPLIER
+    curr_trading_cost = 0
+    curr_trading_volume = 0
+
+    for price, volume in price_table:
+        if curr_trading_cost < max_trading_cost:
+            curr_trading_cost += price * volume
+            curr_trading_volume += volume
+        else:
+            avg_price = curr_trading_cost / curr_trading_volume
+            return True, avg_price
+
+    avg_price = curr_trading_cost / curr_trading_volume
+    return False, avg_price
+
+
 def list_unique_pairs(source1, source2):
     result = []
     for p1 in range(len(source1)):
@@ -46,94 +70,125 @@ def list_unique_pairs(source1, source2):
     return result
 
 
-def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exchange, symbol):
+def print_ask_bid_table(asks, bids):
+    logger.info("               ")
+    for exchange in all_exchanges:
+        logger.info("{}         ".format(exchange[:3]))
+    loggerln.info("")
+    for sym in symbols:
+        logger.info(sym + " ")
+        for i in range(2):
+            logger.info("asks ")  if i == 0 else logger.info("        bids ")
+            for exchange in all_exchanges:
+                if i == 0:
+                    if asks[exchange][sym] >= 100:
+                        logger.info("{:.4f} <> ".format(asks[exchange][sym]))
+                    else:
+                        logger.info("  {:.4f} <> ".format(asks[exchange][sym]))
+                else:
+                    if bids[exchange][sym] >= 100:
+                        logger.info("{:.4f} <> ".format(bids[exchange][sym]))
+                    else:
+                        logger.info("  {:.4f} <> ".format(bids[exchange][sym]))
+
+            loggerln.info("")
+        loggerln.info("")
+
+
+def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchange):
     global opened_trades
 
     # garantees that the exchange has at least the MIN_TRADE_AMOUNT avaiable for trading
-    if (real_balance[buying_exchange] < MIN_TRADE_AMOUNT) or (
-        real_balance[selling_exchange] < MIN_TRADE_AMOUNT
-    ):
-        loggerln.info(
-            f"Insuficient amount available in either exchange! {buying_exchange} or {selling_exchange}"
-        )
-        return
+    if (real_balance[buying_exchange] < MIN_TRADE_AMOUNT):
+        return False, f"Insuficient USD amount available on {buying_exchange}"
 
 
-    # Find out how much usd you are going to spend on the trade
+  #### Handles the USD/USDT difference in the exchange methods. ####
+    if buying_exchange in usdt_exchanges:
+        buying_symbol = symbol + "T"
+    else:
+        buying_symbol = symbol
+
+    if selling_exchange in usdt_exchanges:
+        selling_symbol = symbol + "T"
+    else:
+        selling_symbol = symbol
+  #### \Handles the USD/USDT difference in the exchange methods. ####
+
+  #### Get the Fees ####
+    if exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['percentage']:
+        buying_maker_fee = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['maker']
+    else:
+        return False, f"Exchange {buying_exchange} don`t use percentage fee on market {symbol}"
+
+    if exchanges_obj[all_exchanges.index(selling_exchange)].markets[selling_symbol]['percentage']:
+        selling_maker_fee = exchanges_obj[all_exchanges.index(selling_exchange)].markets[selling_symbol]['maker']
+    else:
+        return False, f"Exchange {selling_exchange} don`t use percentage fee on market {symbol}"
+  #### \Get the Fees ####
+
+  #### Get and check the precision ####
+    amount_sym2_precision = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['precision']['amount']
+
+    # A negative amount precision means that the amount should be an integer multiple of 10
+    if (amount_sym2_precision < 0):
+        return False, f"Coin `{symbol}` amount must be multiple of 10 and is not implemented on {buying_exchange} yet."
+  #### \Get and check the precision ####
+
+
+    # Find out how much usd you are going to spend on the trade.
     # Amount bought sym1 means that it was bought x dollars worth of sym2
     if real_balance[buying_exchange] > TRADING_AMOUNT:
         amount_bought_sym1 = TRADING_AMOUNT
     else:
         amount_bought_sym1 = real_balance[buying_exchange]
-    if real_balance[selling_exchange] > TRADING_AMOUNT:
-        amount_sold_sym1 = TRADING_AMOUNT
-    else:
-        amount_sold_sym1 = real_balance[selling_exchange]
 
 
-    trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR # garantees you`re going to have money for fees (updated later)
-    amount_bought_sym1 -= trading_buying_reserve
-
-    trading_selling_reserve = amount_sold_sym1 * FEES_FACTOR # garantees you`re going to have money for fees updated later)
-    amount_sold_sym1 -= trading_selling_reserve
-
-
-    ask_price = asks_list[symbols.index(symbol)][all_exchanges.index(buying_exchange)]
-    bid_price = bids_list[symbols.index(symbol)][all_exchanges.index(selling_exchange)]
+    ask_price = asks[buying_exchange][symbol]
+    bid_price = bids[selling_exchange][symbol]
 
     amount_bought_sym2 = amount_bought_sym1 / ask_price
-    amount_sold_sym2 = amount_sold_sym1 / bid_price
 
-    # Garantees that the amount sold/bought are the same on sym2 - That keeps trade market neutral
-    # FIX ME: The best condition is to operate with the amount of sym2 bought (would garantee max profit). Take care with the margin condition
-    # amount_bought_sym2 always > amount_sold_sym2
-    if amount_bought_sym2 > amount_sold_sym2:
-        amount_traded_sym2 = amount_sold_sym2
+    #Amount that will be bought!!!!!!! \/ (fees will be taken from this amount)
+    str_amount_bought_sym2 = decimal_to_precision(amount_bought_sym2, TRUNCATE, amount_sym2_precision, DECIMAL_PLACES)
+    amount_bought_sym2 = float(str_amount_bought_sym2)
+
+
+  #### Handles Limits ####
+    if amount_bought_sym2 > exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']:
+        amount_bought_sym2 = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']
+        amount_bought_sym1 = amount_bought_sym2 * ask_price
+
+    if (amount_bought_sym2 * (1 - buying_maker_fee)) < exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['min']:
+        return False, f"Amount of Crypto you tried to buy is below the minimum allowed by {buying_exchange}"
+  #### \Handles Limits ####
+
+    if SIM_MODE:
+
+        #Update amount in usd according to the new amount in Crypto
+        amount_bought_sym1 = amount_bought_sym2 * ask_price
+
+        calculated_fees_sym2 = (buying_maker_fee * amount_bought_sym2) + withdraw_fees[symbol]
+
+        amount_bought_sym1 = round(amount_bought_sym1, 2)
+        calculated_fees_sym2 = round(calculated_fees_sym2, amount_sym2_precision)
+
+        # Update Balances
+        real_balance[buying_exchange] -= (amount_bought_sym1)
+
+      #### Expected results on the selling exchange if trade was instantaneous ####
+        expected_amount_selling_exchange_sym2 = amount_bought_sym2 - calculated_fees_sym2
+        expected_selling_fees = (expected_amount_selling_exchange_sym2 * bid_price) * selling_maker_fee
+        expected_total_sold_sym1 = (expected_amount_selling_exchange_sym2 * bid_price) - expected_selling_fees
+      #### \Expected results on the selling exchange if trade was instantaneous ####
+
     else:
-        amount_traded_sym2 = amount_bought_sym2
-    
+        pass
+        # CODE FOR ACTUAL TRADING GOES HERE
 
-    # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
-    amount_bought_sym1 = ask_price * amount_traded_sym2
-    amount_sold_sym1 = bid_price * amount_traded_sym2
+        # trade_mod.buy_token(buying_exchange, amount_bought_sym1, symbol)
+        # trade_mod.sell_token(selling_exchange, amount_sold_sym1, symbol) # Short sell
 
-
-    # Calculates the absolute fee paid on each exchange
-    # perc_buying_fee = exchanges_fees[all_exchanges.index(buying_exchange)] # % of fees buying exchange
-    # perc_selling_fee = exchanges_fees[all_exchanges.index(selling_exchange)] # % of fees selling exchange
-
-    # abs_buy_entry_fee = amount_bought_sym1 * perc_buying_fee
-    # abs_sell_entry_fee = amount_sold_sym1 * perc_selling_fee
-
-    # update the reserve amount to avoid to much fee reserved on either exchange.
-    trading_buying_reserve = amount_bought_sym1 * FEES_FACTOR
-    trading_selling_reserve = amount_sold_sym1 * FEES_FACTOR
-
-    # decrease the fee paid from the reserve
-    # trading_buying_reserve -= abs_buy_entry_fee
-    # trading_selling_reserve -= abs_sell_entry_fee
-
-    # Round all amounts here before trading (Try to avoid float point hardware approximation)
-    amount_bought_sym1 = round(amount_bought_sym1, 2)
-    amount_sold_sym1 = round(amount_sold_sym1, 2)
-    trading_buying_reserve = round(trading_buying_reserve, 2)
-    trading_selling_reserve = round(trading_selling_reserve, 2)
-    abs_buy_entry_fee = round(abs_buy_entry_fee, 2)
-    abs_sell_entry_fee = round(abs_sell_entry_fee, 2)
-
-
-    trade_mod.buy_token(buying_exchange, amount_bought_sym1, symbol)
-    trade_mod.sell_token(selling_exchange, amount_sold_sym1, symbol) # Short sell
-
-    # Update Balances
-    real_balance[buying_exchange] -= (amount_bought_sym1 + abs_buy_entry_fee + trading_buying_reserve)
-    # reserve_balance[all_exchanges.index(buying_exchange)] += trading_buying_reserve
-
-    # YOU DO NOT DECREASE THE REAL BALANCE WHEN YOU SELL CRYPTO (Margin trade). Margin balance really needed?
-    real_balance[selling_exchange] += amount_sold_sym1
-    real_balance[selling_exchange] -= (abs_sell_entry_fee + trading_selling_reserve)
-    # reserve_balance[all_exchanges.index(selling_exchange)] += trading_selling_reserve
-    #margin_balance[all_exchanges.index(selling_exchange)] += amount_sold_sym1
 
     # if trade sucessful:
         # Register the trade
@@ -141,165 +196,177 @@ def open_trade(pair, asks_list, bids_list, spread, buying_exchange, selling_exch
         symbol,
         "Opening",
         spread,
-        amount_traded_sym2,
+        amount_bought_sym2,
         buying_exchange,
         ask_price,
         amount_bought_sym1,
-        abs_buy_entry_fee,
-        trading_buying_reserve,
+        calculated_fees_sym2,
         selling_exchange,
+        expected_amount_selling_exchange_sym2,
         bid_price,
-        amount_sold_sym1,
-        abs_sell_entry_fee,
-        trading_selling_reserve,
+        expected_total_sold_sym1,
+        expected_selling_fees,
         0
     )
 
-    file_manag.updt_balance_files(
-        all_exchanges, real_balance, margin_balance, reserve_balance
-    )
-
-
-        # Update the opened trade matrix
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_is_trade_open(True)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_traded_symbol(symbol)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_buying_exchange(buying_exchange)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_bought_symbol1(amount_bought_sym1)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_buying_exchange(trading_buying_reserve)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_selling_exchange(selling_exchange)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_sold_symbol1(amount_sold_sym1)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_fee_reserved_selling_exchange(trading_selling_reserve)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_amount_traded_symbol2(amount_traded_sym2)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_entry_spread(spread)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_abs_buy_entry_fee(abs_buy_entry_fee)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_abs_sell_entry_fee(abs_sell_entry_fee)
-
-    opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].set_exit_spread(
-        spread - SPREAD_TARGET - 2 * (perc_selling_fee + perc_buying_fee)
-    )
-   
-
-        # Update the opened_trades object file
-    file_manag.save_trades_data(opened_trades)
-
-    pass
-
-
-def close_trade(pair, asks_list, bids_list, symbol, spread):
-    global opened_trades, pairs_data
-
-    loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol}")
+    file_manag.updt_balance_files(all_exchanges, real_balance)
 
     nsymbol = symbols.index(symbol)
     npair = exchange_pairs.index(pair)
 
-    # find where to buy, where to sell and how much of symbol2 is going to be sold/bought
-    buy_on_exchange = opened_trades[nsymbol][npair].get_selling_exchange()
-    sell_on_exchange = opened_trades[nsymbol][npair].get_buying_exchange()
+        # Update the opened trade matrix
+    opened_trades[npair][nsymbol].set_is_trade_open(True)
 
-    amount_traded_symbol2 = opened_trades[nsymbol][npair].get_amount_traded_symbol2()
+    opened_trades[npair][nsymbol].set_traded_symbol(symbol)
 
-    trading_buying_reserve = opened_trades[nsymbol][npair].get_fee_reserved_selling_exchange()
-    trading_selling_reserve = opened_trades[nsymbol][npair].get_fee_reserved_buying_exchange()
+    opened_trades[npair][nsymbol].set_buying_exchange(buying_exchange)
 
-    # sell the buying one and buy the selling one according to the ask/bid list
-    ask_price = asks_list[nsymbol][all_exchanges.index(buy_on_exchange)]
-    bid_price = bids_list[nsymbol][all_exchanges.index(sell_on_exchange)]
+    opened_trades[npair][nsymbol].set_amount_bought_symbol1(amount_bought_sym1)
 
-        # Update the amount spent in dollars on the trade according to the amount of sym2 traded (same amount of sym2 on both exchanges)
-    amount_bought_sym1 = ask_price * amount_traded_symbol2
-    amount_sold_sym1 = bid_price * amount_traded_symbol2
+    opened_trades[npair][nsymbol].set_total_fees_buying_exchange(calculated_fees_sym2)
 
-    # Calculates the absolute fee paid on each exchange
-    # perc_buying_fee = exchanges_fees[all_exchanges.index(buy_on_exchange)] # % of fees buying exchange
-    # perc_selling_fee = exchanges_fees[all_exchanges.index(sell_on_exchange)] # % of fees selling exchange
+    opened_trades[npair][nsymbol].set_total_bought_sym2(amount_bought_sym2)
 
-    # abs_buying_fee_sym1 = amount_bought_sym1 * perc_buying_fee
-    # abs_selling_fee_sym1 = amount_sold_sym1 * perc_selling_fee
+    opened_trades[npair][nsymbol].set_selling_exchange(selling_exchange)
 
-    # Round to 2 decimals
-    amount_bought_sym1 = round(amount_bought_sym1, 2)
-    amount_sold_sym1 = round(amount_sold_sym1, 2)
-    # abs_buying_fee_sym1 = round(abs_buying_fee_sym1, 2)
-    # abs_selling_fee_sym1 = round(abs_selling_fee_sym1, 2)
+    opened_trades[npair][nsymbol].set_expected_amount_selling_sym2(expected_amount_selling_exchange_sym2)
 
-    trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
-    trade_mod.sell_token(sell_on_exchange, amount_sold_sym1, symbol)
+    opened_trades[npair][nsymbol].set_expected_total_sold_sym1(expected_total_sold_sym1)
 
-    # Update the balances
+    opened_trades[npair][nsymbol].set_expected_selling_fees(expected_selling_fees)
 
-    real_balance[buy_on_exchange] -= amount_bought_sym1 # Close short selling operation (Margin trade)
-    # reserve_balance[all_exchanges.index(buy_on_exchange)] -= trading_buying_reserve
-    trading_buying_reserve -= abs_buying_fee_sym1
-    real_balance[buy_on_exchange] += trading_buying_reserve
+    opened_trades[npair][nsymbol].set_entry_spread(spread)
 
-    real_balance[sell_on_exchange] += amount_sold_sym1
-    # reserve_balance[all_exchanges.index(sell_on_exchange)] -= trading_selling_reserve
-    trading_selling_reserve -= abs_selling_fee_sym1
-    real_balance[sell_on_exchange] += trading_selling_reserve
+    opened_trades[npair][nsymbol].set_opp_initial_time(time.time())
 
-    total_fees = opened_trades[nsymbol][npair].get_abs_buy_entry_fee() + opened_trades[nsymbol][npair].get_abs_sell_entry_fee() + abs_buying_fee_sym1 + abs_selling_fee_sym1
-    total_profit = (opened_trades[nsymbol][npair].get_amount_sold_symbol1() - opened_trades[nsymbol][npair].get_amount_bought_symbol1()) + (amount_sold_sym1 - amount_bought_sym1) - total_fees
-
-    # register the trade
-        # if trade sucessful:
-    file_manag.register_trade(
-        symbol,
-        "Closing",
-        spread,
-        amount_traded_symbol2,
-        buy_on_exchange,
-        ask_price,
-        amount_bought_sym1,
-        abs_buying_fee_sym1,
-        0,  # reserved_buying_fees
-        sell_on_exchange,
-        bid_price,
-        amount_sold_sym1,
-        abs_selling_fee_sym1,
-        0,  # reserved_selling_fees
-        total_profit
-    )
-
-    file_manag.updt_balance_files(
-        all_exchanges, real_balance, margin_balance, reserve_balance
-    )
-
-    #update the opened trades
-    opened_trades[nsymbol][npair].set_is_trade_open(False)
-    opened_trades[nsymbol][npair] = TradeData(pair)
     # Update the opened_trades object file
     file_manag.save_trades_data(opened_trades)
 
+    return True, "Trade was Successful!"
+    pass
+
+
+def close_trade(pair, asks, bids, symbol, spread):
+    global opened_trades, pairs_spread_data
+
+  #### Check if transference has been accomplished ####
+    if SIM_MODE:
+        tic = opened_trades[exchange_pairs.index(pair)][symbols.index(symbol)].get_opp_initial_time()
+        if (time.time() - tic) <= transfer_time[symbol]:
+            return False, "Transference is still on the go"
+
+    else:
+        pass
+        # CODE FOR ACTUAL TRADING GOES HERE
+
+  #### \Check if transference has been accomplished ####
+
+    nsymbol = symbols.index(symbol)
+    npair = exchange_pairs.index(pair)
+
+    selling_exchange = opened_trades[npair][nsymbol].get_selling_exchange()
+    buying_exchange = opened_trades[npair][nsymbol].get_buying_exchange()
+
+    loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol} - by selling on {selling_exchange}")
+
+  #### Handles the USD/USDT difference in the exchange methods. ####
+    if buying_exchange in usdt_exchanges:
+        buying_symbol = symbol + "T"
+    else:
+        buying_symbol = symbol
+
+    if selling_exchange in usdt_exchanges:
+        selling_symbol = symbol + "T"
+    else:
+        selling_symbol = symbol
+  #### \Handles the USD/USDT difference in the exchange methods. ####
+
+  #### Get the Fees ####
+    if exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['percentage']:
+        buying_maker_fee = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['maker']
+    else:
+        return False, f"Exchange {buying_exchange} don`t use percentage fee on market {symbol}"
+
+    if exchanges_obj[all_exchanges.index(selling_exchange)].markets[selling_symbol]['percentage']:
+        selling_maker_fee = exchanges_obj[all_exchanges.index(selling_exchange)].markets[selling_symbol]['maker']
+    else:
+        return False, f"Exchange {selling_exchange} don`t use percentage fee on market {symbol}"
+  #### \Get the Fees ####
+
+
+    ask_price = asks[buying_exchange][symbol]
+    bid_price = bids[selling_exchange][symbol]
+
+
+    if SIM_MODE:
+        amount_received_sym2 = opened_trades[npair][nsymbol].get_expected_amount_selling_sym2()
+        selling_fees_sym1 = (amount_received_sym2 * bid_price) * selling_maker_fee
+        amount_sold_sym1 = (amount_received_sym2 * bid_price) - selling_fees_sym1
+
+        amount_sold_sym1 = round(amount_sold_sym1, 2)
+        selling_fees_sym1 = round(selling_fees_sym1, 2)
+
+        # Update Balances
+        real_balance[selling_exchange] += (amount_sold_sym1)
+
+        total_profit = amount_sold_sym1 - opened_trades[npair][nsymbol].get_amount_bought_symbol1()
+
+    else:
+        pass
+        # CODE FOR ACTUAL TRADING GOES HERE
+
+        # trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
+        # trade_mod.sell_token(sell_on_exchange, amount_sold_sym1, symbol)
+
+    # Update the balances
+
+
+    # if trade sucessful:
+        # Register the trade
+    file_manag.register_trade(
+        symbol,
+        "Opening",
+        spread,
+        opened_trades[npair][nsymbol].get_total_bought_sym2(),
+        buying_exchange,
+        ask_price,
+        opened_trades[npair][nsymbol].get_amount_bought_symbol1(),
+        opened_trades[npair][nsymbol].set_total_fees_buying_exchange(),
+        selling_exchange,
+        amount_received_sym2,
+        bid_price,
+        amount_sold_sym1,
+        selling_fees_sym1,
+        total_profit
+    )
+
+    file_manag.updt_balance_files(all_exchanges, real_balance)
+
+  #### Update the opened_trades object file ####
+    opened_trades[npair][nsymbol].set_is_trade_open(False)
+    opened_trades[npair][nsymbol] = TradeData(pair)
+  #### \Update the opened_trades object file ####
+    file_manag.save_trades_data(opened_trades)
+
     # Zero max/min spread and trailing data
-    pairs_data[nsymbol][npair] = PairData(pair)
+    pairs_spread_data[npair][nsymbol] = PairData(pair)
 
     pass
 
 
-def close_all_opened_trades(asks_list, bids_list, pairs_data_list):
+def close_all_opened_trades(asks_list, bids_list, pairs_spread_data_list):
 
     for symbol in symbols:
         for pair in exchange_pairs:
-            if opened_trades[symbols.index(symbol)][exchange_pairs.index(pair)].get_is_trade_open():
-                close_trade(pair, asks_list, bids_list, symbol, pairs_data_list[symbols.index(symbol)][exchange_pairs.index(pair)].get_curr_spread())
+            if opened_trades[exchange_pairs.index(pair)][symbols.index(symbol)].get_is_trade_open():
+                close_trade(pair, asks_list, bids_list, symbol, pairs_spread_data_list[exchange_pairs.index(pair)][symbols.index(symbol)].get_curr_spread())
 
 
 def init():
-    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_data, all_exchanges, exchange_pairs
+    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_spread_data, all_exchanges, exchange_pairs
     
-
+    can_buy_exchanges.sort()
+    can_sell_exchanges.sort()
     all_exchanges.extend(can_buy_exchanges)
     all_exchanges.extend(can_sell_exchanges)
     all_exchanges = list(set(all_exchanges)) #Transform it into a list of unique values
@@ -345,17 +412,17 @@ def init():
     else:
         # Holds all possible combinations trading pairs/symbols and stores a TradeData for each
         opened_trades = [
-            [TradeData(pair) for pair in exchange_pairs]
-            for y in range(len(symbols))
+            [TradeData(pair) for y in range(len(symbols))]
+            for pair in exchange_pairs
         ]
         # Update the opened_trades object file
         file_manag.save_trades_data(opened_trades)
 
 
     # Holds all possible combinations trading pairs/symbols and stores a PairData for each
-    pairs_data = [
-            [PairData(pair) for pair in exchange_pairs]
-            for y in range(len(symbols))
+    pairs_spread_data = [
+            [PairData(pair) for y in range(len(symbols))]
+            for pair in exchange_pairs
         ]
 
     pass
@@ -368,7 +435,7 @@ exchange_pairs = [] # All possible trading Pairs (String)
 exchanges_obj = []  # a placeholder for your instances (ccxta object)
 is_online = {} # Holds whether an exchange fetch was not successful (Boolean)
 opened_trades = [] # Usado  para gravar os TradeData e para garantir que o bot não entrará na mesma operação duas vezes. (TradeData object)
-pairs_data = [] #Used mainly to record the spread data of each pair / symbol (PairData Object)
+pairs_spread_data = [] #Used mainly to record the spread data of each pair / symbol (PairData Object)
 
 #Balances:
 real_balance = {}
@@ -376,9 +443,14 @@ real_balance = {}
 # reserve_balance = [0 for x in range(len(all_exchanges))]
 
 
+SIM_MODE = True # True indicates that simulation mode is on (Don't use private methods)
+TRADING_MODE = False #False indicates that trades will not be perfomed but private methods will be used.
 # Symbols to trade
-symbols = ["ETH/USD", "EOS/USD", "XRP/USD"] #Without Margin trade (Transfering currencies) 
-symbolsT = ["ETH/USDT", "EOS/USDT", "XRP/USDT"] #Without Margin trade (Transfering currencies) 
+symbols = ("ETH/USD", "EOS/USD", "XRP/USD") #Without Margin trade (Transfering currencies) 
+symbolsT = ("ETH/USDT", "EOS/USDT", "XRP/USDT") #Without Margin trade (Transfering currencies)
+withdraw_fees = {"ETH/USD" : 0.01 ,"EOS/USD": 0.1, "XRP/USD": 0.25}
+transfer_time = {"ETH/USD" : 10*60 ,"EOS/USD": 10*60, "XRP/USD": 10*60}
+
 
 # Exchanges to trade
 # all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
@@ -386,7 +458,7 @@ usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin", "p
 usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
 
 can_buy_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
-can_sell_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+can_sell_exchanges = ["binance", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
 
 
 # Trailing is the percentage from the max to trade
@@ -394,12 +466,12 @@ TRIGGER_SPREAD = 1/100
 SPREAD_TARGET = 0.5/100
 TRAILING_STOP = 0.9
 
-# Percentage of the trade reserved for fees.
-FEES_FACTOR = 5/100
-# Min amount per trade
-MIN_TRADE_AMOUNT = 50
-# Max ammount traded in each oppotunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available):
-TRADING_AMOUNT = 1000
+
+# FEES_FACTOR = 5/100 # Percentage of the trade reserved for fees.
+MIN_TRADE_AMOUNT = 50 # Min amount per trade (in USD)
+MIN_CRYPT_TRADE_AMOUNT = {"ETH/USD" : 50, "EOS/USD": 50, "XRP/USD":22}
+TRADING_AMOUNT = 1000 # Max ammount traded in each opportunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available)
+SAFE_ORDERBOOK_MULTIPLIER = 3  # Orders are calculated for n times the trading amount (to keep safe from low liquidity)
 
 FILE_STOP_TRADING = "stoptrading.txt"
 FILE_CLOSE_ALL_TRADES = "closetrades.txt"
@@ -433,8 +505,17 @@ if __name__ == "__main__":
         ncounter += 1
 
         # Holds on two dimensiona array [Exchange][Symbol]
-        bids = [[0 for x in range(len(all_exchanges))] for y in range(len(symbols))]
-        asks = [[0 for x in range(len(all_exchanges))] for y in range(len(symbols))]
+        bids = defaultdict(dict)
+        asks = defaultdict(dict)
+        has_bid_liquidity = defaultdict(dict)
+        has_ask_liquidity = defaultdict(dict)
+        for exchange in all_exchanges:
+            for symbol in symbols:
+                bids[exchange][symbol] = 0
+                asks[exchange][symbol] = 0
+                has_bid_liquidity[exchange][symbol] = False
+                has_ask_liquidity[exchange][symbol] = False
+
 
         # !!! Fetch data
         tic = time.time()
@@ -449,100 +530,91 @@ if __name__ == "__main__":
         for i in range(len(all_exchanges)):
             is_online[all_exchanges[i]] = not isinstance(a1[i], Exception)
 
+
         # !!! Take Bids/Asks
-        for nSym in range(len(symbols)):
+        for nSym, Sym in enumerate(symbols):
             for index, symbol_pairs in enumerate(a1):
                 if is_online[all_exchanges[index]]:
                     if all_exchanges[index] in usd_exchanges:
-                        bids[nSym][index] = symbol_pairs[symbols[nSym]]["bids"][0][0] if len (symbol_pairs[symbols[nSym]]["bids"]) > 0 else None
-                        asks[nSym][index] = symbol_pairs[symbols[nSym]]["asks"][0][0] if len (symbol_pairs[symbols[nSym]]["asks"]) > 0 else None
+                        has_bid_liquidity[all_exchanges[index]][Sym], bids[all_exchanges[index]][Sym] = calc_avg_price(symbol_pairs[symbols[nSym]]["bids"]) if len (symbol_pairs[symbols[nSym]]["bids"]) > 0 else None
+                        has_ask_liquidity[all_exchanges[index]][Sym], asks[all_exchanges[index]][Sym] = calc_avg_price(symbol_pairs[symbols[nSym]]["asks"]) if len (symbol_pairs[symbols[nSym]]["asks"]) > 0 else None
                     else:
-                        bids[nSym][index] = symbol_pairs[symbolsT[nSym]]["bids"][0][0] if len (symbol_pairs[symbolsT[nSym]]["bids"]) > 0 else None
-                        asks[nSym][index] = symbol_pairs[symbolsT[nSym]]["asks"][0][0] if len (symbol_pairs[symbolsT[nSym]]["asks"]) > 0 else None
+                        has_bid_liquidity[all_exchanges[index]][Sym], bids[all_exchanges[index]][Sym] = calc_avg_price(symbol_pairs[symbolsT[nSym]]["bids"]) if len (symbol_pairs[symbolsT[nSym]]["bids"]) > 0 else None
+                        has_ask_liquidity[all_exchanges[index]][Sym], asks[all_exchanges[index]][Sym] = calc_avg_price(symbol_pairs[symbolsT[nSym]]["asks"]) if len (symbol_pairs[symbolsT[nSym]]["asks"]) > 0 else None
         # !!! \Take Bids/Asks
 
-        print("")
-        sys.exit()
 
-        loggerln.info(f"bids: {bids}")
-        loggerln.info(f"asks: {asks}")
-        loggerln.info(" ")
+        print_ask_bid_table(asks, bids)
+        
 
-        if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
-            close_all_opened_trades(asks, bids, pairs_data)
-            sys.exit()
+        # if file_manag.file_exists(FILE_CLOSE_ALL_TRADES):
+        #     close_all_opened_trades(asks, bids, pairs_spread_data)
+        #     sys.exit()
 
         # !!! finding/logging opportunities
-        for nSym in range(len(symbols)):
-            loggerln.info(f"Symbol: {symbols[nSym]} :")
+        was_trade_opened = False #Used to avoid openning more than one trade in row. Once one trade is opened, wait for next fetch to open a new trade.
+        for nSym, Sym in enumerate(symbols):
+            loggerln.info(f"Symbol: {Sym} :")
 
             for nPair, pair in enumerate(exchange_pairs):
                 
                 # Check if any of the two exchanges are offline and do nothing if so
                 if (not is_online[pair[0]]) or (not is_online[pair[1]]):
                     logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
-                    logger.info(" - {} = ".format(pair[0], ))
+                    logger.info(" - {} = ".format(pair[0][:3]))
                     logger.info("Online") if is_online[pair[0]] else logger.info("Offline")
-                    logger.info(" / {} = ".format(pair[1], ))
+                    logger.info(" / {} = ".format(pair[1][:3]))
                     loggerln.info("Online") if is_online[pair[1]] else loggerln.info("Offline")
                     continue
 
 
-                # Spread for opened trades are calculated in a different manner                
-                if opened_trades[nSym][nPair].get_is_trade_open():
-                    # Buy on the one you initially sold and sell on the one you initially bought
-                    temp_exc_buy = opened_trades[nSym][nPair].get_selling_exchange()
-                    temp_exc_sell = opened_trades[nSym][nPair].get_buying_exchange()
+                temp_spread_1 = -100 #Garantees that spread2 is used if it cannot sell/buy in either exchange
+                temp_spread_2 = -100 #Garantees that spread1 is used if it cannot sell/buy in either exchange
+                if (pair[0] in can_sell_exchanges and pair[1] in can_buy_exchanges):
+                    temp_spread_1 = (bids[pair[0]][Sym] / asks[pair[1]][Sym]) - 1
 
-                    # Consider the prices to exit the trade, not the ones used to enter the trade
-                    temp_ask = asks[nSym][all_exchanges.index(opened_trades[nSym][nPair].get_selling_exchange())]
-                    temp_bid = bids[nSym][all_exchanges.index(opened_trades[nSym][nPair].get_buying_exchange())]                    
+                if (pair[1] in can_sell_exchanges and pair[0] in can_buy_exchanges):
+                    temp_spread_2 = (bids[pair[1]][Sym] / asks[pair[0]][Sym]) - 1
 
-                    # To exit the trade, the calculated spread has to be the inverse.
-                    pairs_data[nSym][nPair].set_curr_spread((temp_ask / temp_bid) - 1)
-                else: 
-                    
-                    temp_spread_1 = (bids[nSym][all_exchanges.index(pair[0])] / asks[nSym][all_exchanges.index(pair[1])]) - 1
-                    temp_spread_2 = (bids[nSym][all_exchanges.index(pair[1])] / asks[nSym][all_exchanges.index(pair[0])]) - 1
 
-                    if (temp_spread_1 > temp_spread_2):
-                        temp_ask = asks[nSym][all_exchanges.index(pair[1])]
-                        temp_exc_buy = pair[1]
-                        temp_bid = bids[nSym][all_exchanges.index(pair[0])]
-                        temp_exc_sell = pair[0]
-                    else:
-                        temp_ask = asks[nSym][all_exchanges.index(pair[0])]
-                        temp_exc_buy = pair[0]
-                        temp_bid = bids[nSym][all_exchanges.index(pair[1])]
-                        temp_exc_sell = pair[1]
-                    pairs_data[nSym][nPair].set_curr_spread((temp_bid / temp_ask) - 1)
+                if (temp_spread_1 > temp_spread_2):
+                    temp_ask = asks[pair[1]][Sym]
+                    temp_exc_buy = pair[1]
+                    temp_bid = bids[pair[0]][Sym]
+                    temp_exc_sell = pair[0]
+                else:
+                    temp_ask = asks[pair[0]][Sym]
+                    temp_exc_buy = pair[0]
+                    temp_bid = bids[pair[1]][Sym]
+                    temp_exc_sell = pair[1]
+                pairs_spread_data[nPair][nSym].set_curr_spread((temp_bid / temp_ask) - 1)
 
 
                 # Calculates the all times spread max, min e traling
                 if (
-                    pairs_data[nSym][nPair].get_curr_spread() > pairs_data[nSym][nPair].get_max_spread()
-                ) or (pairs_data[nSym][nPair].get_max_spread() == 0):
-                    pairs_data[nSym][nPair].set_max_spread(pairs_data[nSym][nPair].get_curr_spread())
+                    pairs_spread_data[nPair][nSym].get_curr_spread() > pairs_spread_data[nPair][nSym].get_max_spread()
+                ) or (pairs_spread_data[nPair][nSym].get_max_spread() == 0):
+                    pairs_spread_data[nPair][nSym].set_max_spread(pairs_spread_data[nPair][nSym].get_curr_spread())
 
-                    pairs_data[nSym][nPair].set_curr_trailing(pairs_data[nSym][nPair].get_max_spread() * TRAILING_STOP)
+                    pairs_spread_data[nPair][nSym].set_curr_trailing(pairs_spread_data[nPair][nSym].get_max_spread() * TRAILING_STOP)
 
 
                 if (
-                    pairs_data[nSym][nPair].get_curr_spread() < pairs_data[nSym][nPair].get_min_spread()
-                ) or (pairs_data[nSym][nPair].get_min_spread() == 0):
-                    pairs_data[nSym][nPair].set_min_spread(pairs_data[nSym][nPair].get_curr_spread())
-                
+                    pairs_spread_data[nPair][nSym].get_curr_spread() < pairs_spread_data[nPair][nSym].get_min_spread()
+                ) or (pairs_spread_data[nPair][nSym].get_min_spread() == 0):
+                    pairs_spread_data[nPair][nSym].set_min_spread(pairs_spread_data[nPair][nSym].get_curr_spread())
+
                 # \Calculates the all times spread max, min e traling
 
 
                 # Verificar condicao para entrar no trade
                 if (
-                    (pairs_data[nSym][nPair].get_curr_spread() >= TRIGGER_SPREAD)
+                    (pairs_spread_data[nPair][nSym].get_curr_spread() >= TRIGGER_SPREAD)
                     and (
-                        pairs_data[nSym][nPair].get_curr_spread() <= pairs_data[nSym][nPair].get_curr_trailing()
+                        pairs_spread_data[nPair][nSym].get_curr_spread() <= pairs_spread_data[nPair][nSym].get_curr_trailing()
                     )
                     and (
-                        not opened_trades[nSym][nPair].get_is_trade_open()
+                        not opened_trades[nPair][nSym].get_is_trade_open()
                     )
                 ):
 
@@ -550,46 +622,53 @@ if __name__ == "__main__":
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            pairs_data[nSym][nPair].get_max_spread(),
-                            pairs_data[nSym][nPair].get_min_spread() ,
-                            pairs_data[nSym][nPair].get_curr_spread(),
-                            pairs_data[nSym][nPair].get_curr_trailing(),
+                            pairs_spread_data[nPair][nSym].get_max_spread(),
+                            pairs_spread_data[nPair][nSym].get_min_spread() ,
+                            pairs_spread_data[nPair][nSym].get_curr_spread(),
+                            pairs_spread_data[nPair][nSym].get_curr_trailing(),
                         ),
                     )
-                    logger.info(" - Opportunity Found!")
+                    logger.info(" - Opportunity Found! - ")
                     
                     # Added a way to stop entering new trades
                     if not file_manag.file_exists(FILE_STOP_TRADING):
-                        open_trade(pair, asks, bids, pairs_data[nSym][nPair].get_curr_spread(), temp_exc_buy, temp_exc_sell, symbols[nSym])
+                        if not was_trade_opened:
+                            was_trade_successful, msg = open_trade(pair, asks, bids, symbols[nSym], pairs_spread_data[nPair][nSym].get_curr_spread(), temp_exc_buy, temp_exc_sell)
+                            if (was_trade_successful):
+                                logger.info("Trade Opened!")
+                                was_trade_opened = True
+                            else:
+                                logger.info("Opening trade failed!: " + msg)
+                        else:
+                            logger.info("Trade has already been opened in this loop. Waiting for next loop")
                     else:
                         logger.info(" New Trades are Paused")
 
                     loggerln.info("")
 
-                elif opened_trades[nSym][nPair].get_is_trade_open():
+                elif opened_trades[nPair][nSym].get_is_trade_open():
 
                     logger.info(
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            pairs_data[nSym][nPair].get_max_spread(),
-                            pairs_data[nSym][nPair].get_min_spread(),
-                            pairs_data[nSym][nPair].get_curr_spread(),
-                            pairs_data[nSym][nPair].get_curr_trailing(),
+                            pairs_spread_data[nPair][nSym].get_max_spread(),
+                            pairs_spread_data[nPair][nSym].get_min_spread(),
+                            pairs_spread_data[nPair][nSym].get_curr_spread(),
+                            pairs_spread_data[nPair][nSym].get_curr_trailing(),
                         ),
                     )
-
-                    if (pairs_data[nSym][nPair].get_curr_spread() <= opened_trades[nSym][nPair].get_exit_spread()):
-                        close_trade(pair, asks, bids, symbols[nSym], pairs_data[nSym][nPair].get_curr_spread())
-                        #rlogger.info("- TRADE CLOSED!!!")
+                    
+                    was_close_successful, msg = close_trade(pair, asks, bids, symbols[nSym], pairs_spread_data[nPair][nSym].get_curr_spread())
+                    if (was_close_successful):
+                        logger.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
-                        loggerln.info("Entry Spread = {:.2%} - Exit Spread = {:.2%}".format(
-                            opened_trades[nSym][nPair].get_entry_spread(),
-                            opened_trades[nSym][nPair].get_exit_spread(),
+                        logger.info("Entry Spread = {:.2%} - ".format(
+                            opened_trades[nPair][nSym].get_entry_spread(),
                             )
                         )
-
+                        loggerln.info(msg)
 
                 else:
 
@@ -597,44 +676,44 @@ if __name__ == "__main__":
                         "Pair (buy/sell): {}/{} (% Max Spread: {:.2%}, Min Spread: {:.2%}, Spread: {:.2%}, Trailing: {:.2%})".format(
                             temp_exc_buy[:3],
                             temp_exc_sell[:3],
-                            pairs_data[nSym][nPair].get_max_spread(),
-                            pairs_data[nSym][nPair].get_min_spread(),
-                            pairs_data[nSym][nPair].get_curr_spread(),
-                            pairs_data[nSym][nPair].get_curr_trailing(),
+                            pairs_spread_data[nPair][nSym].get_max_spread(),
+                            pairs_spread_data[nPair][nSym].get_min_spread(),
+                            pairs_spread_data[nPair][nSym].get_curr_spread(),
+                            pairs_spread_data[nPair][nSym].get_curr_trailing(),
                         )
                     )
                 # \Verificar condicao para entrar no trade
 
             # Show the best available pair to operate on each symbol
         
-            operate_pair_spread = -100 # Starts with a pretty low number
-            is_pair_available = False
-            for nPair, pair in enumerate(exchange_pairs):
-                if not opened_trades[nSym][exchange_pairs.index(pair)].get_is_trade_open():
-                    if operate_pair_spread < pairs_data[nSym][nPair].get_curr_spread():
-                        operate_pair_spread = pairs_data[nSym][nPair].get_curr_spread()
-                        temp_min_ask = min(asks[nSym][all_exchanges.index(pair[0])], asks[nSym][all_exchanges.index(pair[1])])
-                        temp_max_bid = max(bids[nSym][all_exchanges.index(pair[0])], bids[nSym][all_exchanges.index(pair[1])])
-                        is_pair_available = True
+            # operate_pair_spread = -100 # Starts with a pretty low number
+            # is_pair_available = False
+            # for nPair, pair in enumerate(exchange_pairs):
+            #     if not opened_trades[exchange_pairs.index(pair)][nSym].get_is_trade_open():
+            #         if operate_pair_spread < pairs_spread_data[nPair][nSym].get_curr_spread():
+            #             operate_pair_spread = pairs_spread_data[nPair][nSym].get_curr_spread()
+            #             temp_min_ask = min(asks[pair[0]][Sym], asks[pair[1]][Sym])
+            #             temp_max_bid = max(bids[pair[0]][Sym], bids[pair[1]][Sym])
+            #             is_pair_available = True
             
-            if is_pair_available:
-                min_ask_index = asks[nSym][::].index(temp_min_ask)
-                max_bid_index = bids[nSym][::].index(temp_max_bid)
-                loggerln.info("!!!! Operate on \\/ !!!!")
-                loggerln.info(
-                    f"Buy/Sell = {all_exchanges[min_ask_index]} / {all_exchanges[max_bid_index]}"
-                )
-                loggerln.info(
-                    "Highest Absolute Spread: {:.2f}".format(
-                        temp_max_bid - temp_min_ask
-                    )
-                )
+            # if is_pair_available:
+            #     min_ask_index = asks[nSym][::].index(temp_min_ask)
+            #     max_bid_index = bids[nSym][::].index(temp_max_bid)
+            #     loggerln.info("!!!! Operate on \\/ !!!!")
+            #     loggerln.info(
+            #         f"Buy/Sell = {all_exchanges[min_ask_index]} / {all_exchanges[max_bid_index]}"
+            #     )
+            #     loggerln.info(
+            #         "Highest Absolute Spread: {:.2f}".format(
+            #             temp_max_bid - temp_min_ask
+            #         )
+            #     )
 
-                # temp_max_spread handles ZeroDivisionError
-                loggerln.info("% Spread: {:.2%}".format(operate_pair_spread))
-                # loggerln.info("% Spread: {:.2%}".format(((max(bids[nSym][::]) / min(asks[nSym][::])) - 1)))
-            else:
-                loggerln.info("There are no Pairs Available for Trading")
+            #     # temp_max_spread handles ZeroDivisionError
+            #     loggerln.info("% Spread: {:.2%}".format(operate_pair_spread))
+            #     # loggerln.info("% Spread: {:.2%}".format(((max(bids[nSym][::]) / min(asks[nSym][::])) - 1)))
+            # else:
+            #     loggerln.info("There are no Pairs Available for Trading")
 
             loggerln.info(" ")
             # \Show the best available pair to operate on each symbol

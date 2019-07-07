@@ -46,16 +46,24 @@ What about the .close()?
 
 
 
+
 -Cast exchanges globally - ok
 -Create exchange pair between buying and selling exchanges - ok
+-Create an dict that holds the minimum amount of crypto that can be traded for each coin (Set Minimum withdraw for each crypto) - ok
+-Compute price based on the trading volume (Average of the price for 3 times the volume your are considering buying) - ok
+-Break the loop for finding opportunity as soon as the first opportunity is found (With break). Do the fetch_order_book again before openning a new position. - ok
+-Separate exchange in two list: The ones you can buy (withdraw) and the ones you can sell (Deposit) - ok
+-Update real_balance according to the SimMode. - ok
 
--Create a bool for SimMode
--Separate exchange in two list: The ones you can buy (withdraw) and the ones you can sell (Deposit)
+
+-Create a bool for SimMode (Simulation mode cannot use private methods)
 -Create a timedelay to simulate transaction time
--Compute price based on the trading volume (Average of the price for 3 times the volume your are considering buying)
--Set Minimum withdraw for each crypto
--Break the loop for finding opportunity as soon as the first opportunity is found (With break). Do the fetch_order_book again before openning a new position.
 -Count a min number of loops that an opportunity is available before openning a position (e.g. 2 times)
-- Find a safe way to read the API key
+-Find a safe way to read the API key
+
+-If two opportunities sends crpto to the same exchange at the same time, closing trades might be difficult. Maybe the open time recorded can help with that?
+
+
+-OpenTrade / CloseTrade have to return whether the trading was successful.
 
 
