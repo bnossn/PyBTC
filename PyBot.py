@@ -19,46 +19,55 @@ import ccxt.async_support as ccxta  # noqa: E402
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(root + "/python")
 
-async def async_client(exchange):
-    tickers = {}
-    try:
-        await exchange.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
-        for i in range(len(symbols)):
-
-            if symbols[i] not in exchange.symbols:
-                tickers[symbolsT[i]] = await exchange.fetch_l2_order_book(symbolsT[i], 100)
-            else:
-                tickers[symbols[i]] = await exchange.fetch_l2_order_book(symbols[i], 100)
-
-        return tickers
-    finally:
-        await exchange.close()
-
 # async def async_client(exchange):
 #     tickers = {}
 #     try:
-#         # client = getattr(ccxta, exchange)()
-#         client = getattr(ccxta, exchange)(
-#             {"enableRateLimit": True}  # required accoding to the Manual
-#         )
-#         await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
+#         await exchange.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
 #         for i in range(len(symbols)):
 
-#             if symbols[i] not in client.symbols:
-#                 tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
-#                 # raise Exception(exchange + " does not support symbol " + symbols[i])
+#             if symbols[i] not in exchange.symbols:
+#                 tickers[symbolsT[i]] = await exchange.fetch_l2_order_book(symbolsT[i], 100)
 #             else:
-#                 tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+#                 tickers[symbols[i]] = await exchange.fetch_l2_order_book(symbols[i], 100)
 
 #         return tickers
 #     finally:
-#         await client.close()
+#         await exchange.close()
+
+
+async def async_client(exchange):
+    tickers = {}
+    try:
+        # client = getattr(ccxta, exchange)()
+        client = getattr(ccxta, exchange)(
+            {"enableRateLimit": True}  # required accoding to the Manual
+        )
+        await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
+        for i in range(len(symbols)):
+
+            if symbols[i] not in client.symbols:
+                tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
+                # raise Exception(exchange + " does not support symbol " + symbols[i])
+            else:
+                tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+
+        return tickers
+    finally:
+        await client.close()
 
 
 async def multi_orderbooks(exchanges):
     input_coroutines = [async_client(exchange) for exchange in exchanges]
     tickers = await asyncio.gather(*input_coroutines, return_exceptions=True)
     return tickers
+
+
+async def instantiate_exchange(exchange):
+    exch_obj = getattr(ccxta, exchange)(
+        {"enableRateLimit": True}  # required accoding to the Manual
+    )
+    await exch_obj.load_markets(True)
+    return exch_obj
 
 
 def calc_avg_price(price_table):
@@ -175,12 +184,16 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
 
 
   #### Handles Limits ####
-    if amount_bought_sym2 > exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']:
-        amount_bought_sym2 = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']
-        amount_bought_sym1 = amount_bought_sym2 * ask_price
+    max_amount_limit = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']
+    if max_amount_limit != None:
+        if amount_bought_sym2 > max_amount_limit:
+            amount_bought_sym2 = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['max']
+            amount_bought_sym1 = amount_bought_sym2 * ask_price
 
-    if (amount_bought_sym2 * (1 - buying_maker_fee)) < exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['min']:
-        return False, f"Amount of Crypto you tried to buy is below the minimum allowed by {buying_exchange}"
+    min_amount_limit = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['limits']['amount']['min']
+    if min_amount_limit != None:
+        if amount_bought_sym2 < min_amount_limit:
+            return False, f"Amount of Crypto you tried to buy is below the minimum allowed by {buying_exchange}"
   #### \Handles Limits ####
 
     if SIM_MODE:
@@ -384,7 +397,7 @@ def close_all_opened_trades(asks_list, bids_list, pairs_spread_data_list):
 
 
 def init():
-    global real_balance, margin_balance, reserve_balance, opened_trades, loggerln, logger, is_online, pairs_spread_data, all_exchanges, exchange_pairs
+    global real_balance, margin_balance, exchanges_obj, opened_trades, loggerln, logger, is_online, pairs_spread_data, all_exchanges, exchange_pairs
     
     can_buy_exchanges.sort()
     can_sell_exchanges.sort()
@@ -402,12 +415,15 @@ def init():
 
         is_online[exchange] = False
 
-        exch_obj = getattr(ccxta, exchange)(
-            {"enableRateLimit": True}  # required accoding to the Manual
-        )
-        exch_obj.load_markets(True)
-        exchanges_obj.append(exch_obj)
+        # exch_obj = getattr(ccxta, exchange)(
+        #     {"enableRateLimit": True}  # required accoding to the Manual
+        # )
+        # exch_obj.load_markets()
+        # exchanges_obj.append(exch_obj)
 
+    tasks = [instantiate_exchange(exchange) for exchange in all_exchanges]
+    loop = asyncio.get_event_loop()
+    exchanges_obj = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
 
     if not file_manag.file_exists(LOG_FILE_NAME):
@@ -471,7 +487,8 @@ TRADING_MODE = False #False indicates that trades will not be perfomed but priva
 symbols = ("ETH/USD", "EOS/USD", "XRP/USD") #Without Margin trade (Transfering currencies) 
 symbolsT = ("ETH/USDT", "EOS/USDT", "XRP/USDT") #Without Margin trade (Transfering currencies)
 withdraw_fees = {"ETH/USD" : 0.01 ,"EOS/USD": 0.1, "XRP/USD": 0.25}
-transfer_time = {"ETH/USD" : 10*60 ,"EOS/USD": 10*60, "XRP/USD": 10*60}
+transfer_time = {"ETH/USD" : 10*60, "EOS/USD": 10*60, "XRP/USD": 10*60}
+# transfer_time = {"ETH/USD" : 10,"EOS/USD": 10, "XRP/USD": 10}
 
 
 # Exchanges to trade
@@ -485,14 +502,16 @@ can_sell_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "ku
 
 # Trailing is the percentage from the max to trade
 TRIGGER_SPREAD = 1/100
-SPREAD_TARGET = 0.5/100
 TRAILING_STOP = 0.9
+
+# TRIGGER_SPREAD = 0.2/100
+# TRAILING_STOP = 0.9
 
 
 # FEES_FACTOR = 5/100 # Percentage of the trade reserved for fees.
 MIN_TRADE_AMOUNT = 50 # Min amount per trade (in USD)
 MIN_CRYPT_TRADE_AMOUNT = {"ETH/USD" : 50, "EOS/USD": 50, "XRP/USD":22}
-TRADING_AMOUNT = 1000 # Max ammount traded in each opportunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available)
+TRADING_AMOUNT = 2500 # Max ammount traded in each opportunity found (If balance < TRADING_AMOUNT, oppotunity is going to take all balance available)
 SAFE_ORDERBOOK_MULTIPLIER = 3  # Orders are calculated for n times the trading amount (to keep safe from low liquidity)
 
 FILE_STOP_TRADING = "stoptrading.txt"
@@ -542,7 +561,7 @@ if __name__ == "__main__":
         # !!! Fetch data
         tic = time.time()
         loop = asyncio.get_event_loop()
-        a1 = loop.run_until_complete(multi_orderbooks(exchanges_obj))
+        a1 = loop.run_until_complete(multi_orderbooks(all_exchanges))
 
         loggerln.info("async call spend: {:.2f}  -  TimeStamp: {}".format((time.time() - tic), str(file_manag.get_timestamp())))
         # !!! \Fetch data
@@ -627,7 +646,6 @@ if __name__ == "__main__":
                     pairs_spread_data[nPair][nSym].set_min_spread(pairs_spread_data[nPair][nSym].get_curr_spread())
 
                 # \Calculates the all times spread max, min e traling
-
 
                 # Verificar condicao para entrar no trade
                 if (
