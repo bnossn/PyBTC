@@ -52,6 +52,9 @@ class TradeData:
         self.amount_bought_symbol1 = 0  #Total spent Trade + Fees
         self.total_fees_buying_exchange = 0  # given in symbol 2 (trading + withdraw)
         self.total_bought_sym2 = 0 #Without fees (trading + withdraw)
+        self.initial_bid_price = 0
+        self.initial_ask_price = 0
+
 
         self.selling_exchange = ""
         self.expected_amount_selling_sym2 = 0
@@ -133,6 +136,19 @@ class TradeData:
 
     def get_opp_initial_time(self):
         return self.opp_initial_time
+
+    def set_initial_bid_price(self, initial_bid_price):
+        self.initial_bid_price = initial_bid_price
+
+    def get_initial_bid_price(self):
+        return self.initial_bid_price
+
+    def set_initial_ask_price(self, initial_ask_price):
+        self.initial_ask_price = initial_ask_price
+
+    def get_initial_ask_price(self):
+        return self.initial_ask_price
+
 
 
     def __str__(self):

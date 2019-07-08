@@ -260,6 +260,8 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
 
     opened_trades[npair][nsymbol].set_total_bought_sym2(amount_bought_sym2)
 
+    opened_trades[npair][nsymbol].set_initial_ask_price(ask_price)
+
     opened_trades[npair][nsymbol].set_selling_exchange(selling_exchange)
 
     opened_trades[npair][nsymbol].set_expected_amount_selling_sym2(expected_amount_selling_exchange_sym2)
@@ -279,7 +281,7 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
     pass
 
 
-def close_trade(pair, asks, bids, symbol, spread):
+def close_trade(pair, asks, bids, symbol):
     global opened_trades, pairs_spread_data
 
   #### Check if transference has been accomplished ####
@@ -359,7 +361,7 @@ def close_trade(pair, asks, bids, symbol, spread):
     file_manag.register_trade(
         symbol,
         "Closing",
-        spread,
+        (bid_price/opened_trades[npair][nsymbol].get_initial_ask_price)-1,
         opened_trades[npair][nsymbol].get_total_bought_sym2(),
         buying_exchange,
         ask_price,
@@ -393,7 +395,7 @@ def close_all_opened_trades(asks_list, bids_list, pairs_spread_data_list):
     for symbol in symbols:
         for pair in exchange_pairs:
             if opened_trades[exchange_pairs.index(pair)][symbols.index(symbol)].get_is_trade_open():
-                close_trade(pair, asks_list, bids_list, symbol, pairs_spread_data_list[exchange_pairs.index(pair)][symbols.index(symbol)].get_curr_spread())
+                close_trade(pair, asks_list, bids_list, symbol)
 
 
 def init():
@@ -699,7 +701,7 @@ if __name__ == "__main__":
                         ),
                     )
                     
-                    was_close_successful, msg = close_trade(pair, asks, bids, symbols[nSym], pairs_spread_data[nPair][nSym].get_curr_spread())
+                    was_close_successful, msg = close_trade(pair, asks, bids, symbols[nSym])
                     if (was_close_successful):
                         logger.info("- TRADE CLOSED!!!")
                     else:
