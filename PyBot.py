@@ -34,6 +34,26 @@ async def async_client(exchange):
     finally:
         await exchange.close()
 
+# async def async_client(exchange):
+#     tickers = {}
+#     try:
+#         # client = getattr(ccxta, exchange)()
+#         client = getattr(ccxta, exchange)(
+#             {"enableRateLimit": True}  # required accoding to the Manual
+#         )
+#         await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
+#         for i in range(len(symbols)):
+
+#             if symbols[i] not in client.symbols:
+#                 tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
+#                 # raise Exception(exchange + " does not support symbol " + symbols[i])
+#             else:
+#                 tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+
+#         return tickers
+#     finally:
+#         await client.close()
+
 
 async def multi_orderbooks(exchanges):
     input_coroutines = [async_client(exchange) for exchange in exchanges]
@@ -325,13 +345,13 @@ def close_trade(pair, asks, bids, symbol, spread):
         # Register the trade
     file_manag.register_trade(
         symbol,
-        "Opening",
+        "Closing",
         spread,
         opened_trades[npair][nsymbol].get_total_bought_sym2(),
         buying_exchange,
         ask_price,
         opened_trades[npair][nsymbol].get_amount_bought_symbol1(),
-        opened_trades[npair][nsymbol].set_total_fees_buying_exchange(),
+        opened_trades[npair][nsymbol].get_total_fees_buying_exchange(),
         selling_exchange,
         amount_received_sym2,
         bid_price,
@@ -385,6 +405,7 @@ def init():
         exch_obj = getattr(ccxta, exchange)(
             {"enableRateLimit": True}  # required accoding to the Manual
         )
+        exch_obj.load_markets(True)
         exchanges_obj.append(exch_obj)
 
 
@@ -459,7 +480,7 @@ usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin", "p
 usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
 
 can_buy_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
-can_sell_exchanges = ["binance", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+can_sell_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
 
 
 # Trailing is the percentage from the max to trade

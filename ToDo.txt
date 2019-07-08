@@ -65,6 +65,8 @@ What about the .close()?
 
 -has_bid_liquidity was never used
 
+you should create the exchange instance inside the process worker function, not outside of it (don't pass it into the other process, because the memory is not shared that easily – google more about shared memory with processes).
+
 -OpenTrade / CloseTrade have to return whether the trading was successful.
 
 
