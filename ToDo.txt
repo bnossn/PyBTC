@@ -24,23 +24,14 @@ and the one registered whenever closing trade. Fixed - ok
 -Fixed a bug when a calculating minimum Spread - ok
 -Change the way you deaal with PairData - ok
 -Create a SpreadTarget that takes into account the fees. SpreadTarget = The targeted profit - ok
-
-
+-Fix the ordering of the args of the functions open_trade and close_trade - ok
+-Script so considera o valor da melhor oferta sem considerar volume - ok
+-Instantiate all the ccxt objects (exchanges) outside the async function and pass it to the async as parameter. Does this handle Rate Limit better?
+It doesn`t work due to the way memory is shared between processes
 
 
 -Do the exchange commands time management manually. Needed?
-
--Fix the ordering of the args of the functions open_trade and close_trade
-
-
-
 -Use the unsync library to do multiprocessing, multithreading and asyncIO all at once.
-
--Script so considera o valor da melhor oferta sem considerar volume
-
-
--Instantiate all the ccxt objects (exchanges) outside the async function and pass it to the async as parameter. Does this handle Rate Limit better?
-What about the .close()?
 
 -Orders are cached - call purgeCachedOrders(before) from time to time to clean it
 
@@ -54,22 +45,31 @@ What about the .close()?
 -Break the loop for finding opportunity as soon as the first opportunity is found (With break). Do the fetch_order_book again before openning a new position. - ok
 -Separate exchange in two list: The ones you can buy (withdraw) and the ones you can sell (Deposit) - ok
 -Update real_balance according to the SimMode. - ok
+-Create a timedelay to simulate transaction time - ok
+-No fechamento, considerar o spread em realacao a abertura - ok
+-Create a bool for SimMode (Simulation mode cannot use private methods) - ok
 
 
--Create a bool for SimMode (Simulation mode cannot use private methods)
--Create a timedelay to simulate transaction time
+
 -Count a min number of loops that an opportunity is available before openning a position (e.g. 2 times)
 -Find a safe way to read the API key
 
 -If two opportunities sends crpto to the same exchange at the same time, closing trades might be difficult. Maybe the open time recorded can help with that?
+Try to get a transaction ID.
 
 -has_bid_liquidity was never used
 -MIN_CRYPT_TRADE_AMOUNT Was never used
--No fechamento, considerar o spread em realacao a abertura.
 
 you should create the exchange instance inside the process worker function, not outside of it (don't pass it into the other process, because the memory is not shared that easily – google more about shared memory with processes).
 
+-Need to deal with get balance (Real application)
+
+-Need the txid of all transaction. Maybe will hjave to inherit the class
+-Count number of opportunities / coin. If number = 1, sell all coins in balance.
+
+-Try buying ETH and tranfer is to another exchange. Compute the time it takes to transfer
+-Identify if order has been fulfilled.
+-Get txid of all transactions and use that to check if a transaction have been completed.
+
 
 -OpenTrade / CloseTrade have to return whether the trading was successful.
-
-

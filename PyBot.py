@@ -38,18 +38,25 @@ sys.path.append(root + "/python")
 async def async_client(exchange):
     tickers = {}
     try:
-        # client = getattr(ccxta, exchange)()
-        client = getattr(ccxta, exchange)(
-            {"enableRateLimit": True}  # required accoding to the Manual
-        )
+        
+        if exchange == "bitfinex":
+            client = getattr(ccxta, exchange)({
+                "enableRateLimit": True, # required accoding to the Manual
+                "rateLimit" : 4000
+            })
+        else:
+            client = getattr(ccxta, exchange)({
+                "enableRateLimit": True # required accoding to the Manual
+            })
+
         await client.load_markets(True) #True forces the reload of the maket, not fetching the cached one.
         for i in range(len(symbols)):
 
             if symbols[i] not in client.symbols:
-                tickers[symbolsT[i]] = await client.fetch_order_book(symbolsT[i])
+                tickers[symbolsT[i]] = await client.fetch_l2_order_book(symbolsT[i], 100)
                 # raise Exception(exchange + " does not support symbol " + symbols[i])
             else:
-                tickers[symbols[i]] = await client.fetch_order_book(symbols[i])
+                tickers[symbols[i]] = await client.fetch_l2_order_book(symbols[i], 100)
 
         return tickers
     finally:
@@ -67,6 +74,7 @@ async def instantiate_exchange(exchange):
         {"enableRateLimit": True}  # required accoding to the Manual
     )
     await exch_obj.load_markets(True)
+
     return exch_obj
 
 
@@ -158,6 +166,10 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
 
   #### Get and check the precision ####
     amount_sym2_precision = exchanges_obj[all_exchanges.index(buying_exchange)].markets[buying_symbol]['precision']['amount']
+    #### FIX ME: Use amount_to_precision()
+
+    if amount_sym2_precision == None:
+        amount_sym2_precision = 8
 
     # A negative amount precision means that the amount should be an integer multiple of 10
     if (amount_sym2_precision < 0):
@@ -202,6 +214,7 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
         amount_bought_sym1 = amount_bought_sym2 * ask_price
 
         calculated_fees_sym2 = (buying_maker_fee * amount_bought_sym2) + withdraw_fees[symbol]
+        #Fix me, calculate fees using .calculate_fee()
 
         amount_bought_sym1 = round(amount_bought_sym1, 2)
         calculated_fees_sym2 = round(calculated_fees_sym2, amount_sym2_precision)
@@ -217,6 +230,9 @@ def open_trade(pair, asks, bids, symbol, spread, buying_exchange, selling_exchan
 
     else:
         pass
+        #Use create_market_buy_order(self, symbol, amount, params={}): to open orders. it calls self.create_order(symbol, 'market', 'buy', amount, None, params)
+
+        #When opening new trades, becareful with funds amount. database shows some negative Balance. Use the following exception from ccxt.base.errors import InsufficientFunds 
         # CODE FOR ACTUAL TRADING GOES HERE
 
         # trade_mod.buy_token(buying_exchange, amount_bought_sym1, symbol)
@@ -302,7 +318,7 @@ def close_trade(pair, asks, bids, symbol):
     selling_exchange = opened_trades[npair][nsymbol].get_selling_exchange()
     buying_exchange = opened_trades[npair][nsymbol].get_buying_exchange()
 
-    loggerln.info(f"Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol} - by selling on {selling_exchange}")
+    logger.info(f"- Closing trade on pairs: {pair[0]}/{pair[1]} - Symbol = {symbol} - by selling on {selling_exchange} ")
 
   #### Handles the USD/USDT difference in the exchange methods. ####
     if buying_exchange in usdt_exchanges:
@@ -348,6 +364,7 @@ def close_trade(pair, asks, bids, symbol):
 
     else:
         pass
+        # Use create_market_sell_order(self, symbol, amount, params={}): to close order. It uses self.create_order(symbol, 'market', 'sell', amount, None, params)
         # CODE FOR ACTUAL TRADING GOES HERE
 
         # trade_mod.buy_token(buy_on_exchange, amount_bought_sym1, symbol) # Close short selling operation
@@ -361,7 +378,7 @@ def close_trade(pair, asks, bids, symbol):
     file_manag.register_trade(
         symbol,
         "Closing",
-        (bid_price/opened_trades[npair][nsymbol].get_initial_ask_price)-1,
+        (bid_price/opened_trades[npair][nsymbol].get_initial_ask_price())-1,
         opened_trades[npair][nsymbol].get_total_bought_sym2(),
         buying_exchange,
         ask_price,
@@ -399,7 +416,7 @@ def close_all_opened_trades(asks_list, bids_list, pairs_spread_data_list):
 
 
 def init():
-    global real_balance, margin_balance, exchanges_obj, opened_trades, loggerln, logger, is_online, pairs_spread_data, all_exchanges, exchange_pairs
+    global real_balance, margin_balance, exchanges_obj, opened_trades, loggerln, logger, is_online, pairs_spread_data, all_exchanges, exchange_pairs, exch_exceptions
     
     can_buy_exchanges.sort()
     can_sell_exchanges.sort()
@@ -408,24 +425,26 @@ def init():
     all_exchanges = list(set(all_exchanges)) #Transform it into a list of unique values
     all_exchanges.sort() # Sets are ordered randomly. This line garantees the order is always kept.
 
-
     exchange_pairs = list_unique_pairs(can_buy_exchanges, can_sell_exchanges)
 
+    tasks = [instantiate_exchange(exchange) for exchange in all_exchanges]
+    loop = asyncio.get_event_loop()
+    exchanges_obj = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
-    for exchange in all_exchanges:
+    for index, exchange in enumerate(all_exchanges):
         real_balance[exchange] = 0
-
         is_online[exchange] = False
+        exch_exceptions[exchange] = None
+
+        if isinstance(exchanges_obj[index], Exception):
+            print(f"Exchange {exchange} Could not be initialized. - {exchanges_obj[index]}")
+            sys.exit()
 
         # exch_obj = getattr(ccxta, exchange)(
         #     {"enableRateLimit": True}  # required accoding to the Manual
         # )
         # exch_obj.load_markets()
         # exchanges_obj.append(exch_obj)
-
-    tasks = [instantiate_exchange(exchange) for exchange in all_exchanges]
-    loop = asyncio.get_event_loop()
-    exchanges_obj = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
 
     if not file_manag.file_exists(LOG_FILE_NAME):
@@ -474,6 +493,7 @@ all_exchanges = [] # All registered exchanges (String)
 exchange_pairs = [] # All possible trading Pairs (String)
 exchanges_obj = []  # a placeholder for your instances (ccxta object)
 is_online = {} # Holds whether an exchange fetch was not successful (Boolean)
+exch_exceptions = {} #Holds the exceptions returned by the exchanges.
 opened_trades = [] # Usado  para gravar os TradeData e para garantir que o bot não entrará na mesma operação duas vezes. (TradeData object)
 pairs_spread_data = [] #Used mainly to record the spread data of each pair / symbol (PairData Object)
 
@@ -490,24 +510,20 @@ symbols = ("ETH/USD", "EOS/USD", "XRP/USD") #Without Margin trade (Transfering c
 symbolsT = ("ETH/USDT", "EOS/USDT", "XRP/USDT") #Without Margin trade (Transfering currencies)
 withdraw_fees = {"ETH/USD" : 0.01 ,"EOS/USD": 0.1, "XRP/USD": 0.25}
 transfer_time = {"ETH/USD" : 10*60, "EOS/USD": 10*60, "XRP/USD": 10*60}
-# transfer_time = {"ETH/USD" : 10,"EOS/USD": 10, "XRP/USD": 10}
 
 
 # Exchanges to trade
 # all_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
-usdt_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "gateio", "kucoin", "poloniex"]
-usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit"]
+usdt_exchanges = ["binance", "hitbtc2", "zb", "gateio", "kucoin", "poloniex", "okex3"]
+usd_exchanges = ["coinbasepro", "bitfinex", "kraken", "exmo", "yobit", "bittrex"]
 
-can_buy_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
-can_sell_exchanges = ["binance", "huobipro", "hitbtc2", "zb", "coinbasepro", "kucoin", "exmo", "poloniex" ]
+can_buy_exchanges = ["binance", "bitfinex", "hitbtc2", "kucoin", "exmo", "okex3", "poloniex", "zb" ]
+can_sell_exchanges = ["binance", "bitfinex", "hitbtc2", "kucoin", "exmo", "okex3", "poloniex", "zb" ]
 
 
 # Trailing is the percentage from the max to trade
-TRIGGER_SPREAD = 1/100
+TRIGGER_SPREAD = 1.3/100
 TRAILING_STOP = 0.9
-
-# TRIGGER_SPREAD = 0.2/100
-# TRAILING_STOP = 0.9
 
 
 # FEES_FACTOR = 5/100 # Percentage of the trade reserved for fees.
@@ -571,7 +587,11 @@ if __name__ == "__main__":
 
         # Update the isOnline list according to the returned values/exceptions
         for i in range(len(all_exchanges)):
-            is_online[all_exchanges[i]] = not isinstance(a1[i], Exception)
+            if isinstance(a1[i], Exception):
+                is_online[all_exchanges[i]] = False
+                exch_exceptions[all_exchanges[i]] = a1[i]
+            else:
+                is_online[all_exchanges[i]] = True
 
 
         # !!! Take Bids/Asks
@@ -605,9 +625,9 @@ if __name__ == "__main__":
                 if (not is_online[pair[0]]) or (not is_online[pair[1]]):
                     logger.info("Either Exchange is Offline: Pair = {}/{}".format(pair[0][:3], pair[1][:3]))
                     logger.info(" - {} = ".format(pair[0][:3]))
-                    logger.info("Online") if is_online[pair[0]] else logger.info("Offline")
+                    logger.info("Online") if is_online[pair[0]] else logger.info("Off" + " Exception: `" + str(exch_exceptions[pair[0]]) + "` - ")
                     logger.info(" / {} = ".format(pair[1][:3]))
-                    loggerln.info("Online") if is_online[pair[1]] else loggerln.info("Offline")
+                    loggerln.info("Online") if is_online[pair[1]] else loggerln.info("Off" + " Exception: `" + str(exch_exceptions[pair[1]]) + "`")
                     continue
 
 
@@ -672,22 +692,26 @@ if __name__ == "__main__":
                     )
                     logger.info(" - Opportunity Found! - ")
                     
-                    # Added a way to stop entering new trades
-                    if not file_manag.file_exists(FILE_STOP_TRADING):
-                        if not was_trade_opened:
-                            was_trade_successful, msg = open_trade(pair, asks, bids, symbols[nSym], pairs_spread_data[nPair][nSym].get_curr_spread(), temp_exc_buy, temp_exc_sell)
-                            if (was_trade_successful):
-                                logger.info("Trade Opened!")
-                                was_trade_opened = True
+                    try: 
+                        # Added a way to stop entering new trades
+                        if not file_manag.file_exists(FILE_STOP_TRADING):
+                            if not was_trade_opened:
+                                was_trade_successful, msg = open_trade(pair, asks, bids, symbols[nSym], pairs_spread_data[nPair][nSym].get_curr_spread(), temp_exc_buy, temp_exc_sell)
+                                if (was_trade_successful):
+                                    logger.info("Trade Opened!")
+                                    was_trade_opened = True
+                                else:
+                                    logger.info("Opening trade failed!: " + msg)
                             else:
-                                logger.info("Opening trade failed!: " + msg)
+                                logger.info("Trade has already been opened in this loop. Waiting for next loop")
                         else:
-                            logger.info("Trade has already been opened in this loop. Waiting for next loop")
-                    else:
-                        logger.info(" New Trades are Paused")
+                            logger.info(" New Trades are Paused")
 
-                    loggerln.info("")
+                        loggerln.info("")
+                    except Exception as e:
+                        loggerln.info(f" FAILED TO OPEN TRADE: `temp_exc_buy` = {temp_exc_buy}, `temp_exc_sell` = {temp_exc_sell} - " + type(e).__name__ + " - " + str(e))
 
+ 
                 elif opened_trades[nPair][nSym].get_is_trade_open():
 
                     logger.info(
@@ -703,7 +727,7 @@ if __name__ == "__main__":
                     
                     was_close_successful, msg = close_trade(pair, asks, bids, symbols[nSym])
                     if (was_close_successful):
-                        logger.info("- TRADE CLOSED!!!")
+                        loggerln.info("- TRADE CLOSED!!!")
                     else:
                         logger.info(" - OPENED TRADE! - ")
                         logger.info("Entry Spread = {:.2%} - ".format(
